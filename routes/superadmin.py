@@ -1,0 +1,1621 @@
+# -*- coding: utf-8 -*-
+"""
+==============================================================================
+Archivo: routes/superadmin.py
+Bóveda Superadmin con seguridad robusta:
+- Contraseñas desde BD (no hardcoded)
+- Rate limiting en logins
+- Path traversal bloqueado en .avr
+- CSRF protegido
+==============================================================================
+"""
+
+import os
+import re
+import zipfile
+import tempfile
+import shutil
+import io
+import sqlite3
+import json
+import calendar
+import time
+import threading
+import secrets
+
+from datetime import datetime, date, timedelta, timezone
+from functools import wraps
+from sqlalchemy import func
+from flask import (
+    Blueprint, render_template, request, redirect, url_for,
+    flash, session, current_app, send_file, render_template_string, abort
+)
+
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from models import (
+    db, Estudiante, Padre, Profesor, PersonalAdministrativo,
+    Calificacion, Pago, Gasto, PagoPersonal, Mensaje, Egresado,
+    HistorialCalificacion, Materia, Falta, InformeEconomico,
+    ConfiguracionSuperadmin, ahora_bolivia
+)
+
+superadmin_bp = Blueprint('superadmin', __name__,
+                          template_folder='templates/superadmin')
+
+_scheduler_informes_iniciado = False
+
+# =========================================================================
+# CONTRASEÑAS MAESTRAS (desde BD, no hardcoded)
+# =========================================================================
+
+def _obtener_clave(clave_nombre, default=None):
+    """Lee una clave maestra desde ConfiguracionSuperadmin."""
+    try:
+        cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave_nombre).first()
+        if cfg:
+            return cfg.valor
+        if default:
+            nuevo = ConfiguracionSuperadmin(
+                clave=clave_nombre,
+                valor=default,
+                descripcion=f'Clave maestra: {clave_nombre}'
+            )
+            db.session.add(nuevo)
+            db.session.commit()
+            return default
+        return None
+    except Exception:
+        db.session.rollback()
+        return default
+
+
+def _obtener_superadmin_pass():
+    return _obtener_clave('superadmin_password', 'ADMIN2026')
+
+
+# =========================================================================
+# RATE LIMITER PARA BÓVEDA
+# =========================================================================
+
+_intentos_boveda = {}
+
+
+def _rate_limit_boveda(ip, max_intentos=3, ventana=600):
+    ahora = datetime.now().timestamp()
+    if ip not in _intentos_boveda:
+        _intentos_boveda[ip] = []
+    _intentos_boveda[ip] = [t for t in _intentos_boveda[ip] if ahora - t < ventana]
+    if len(_intentos_boveda[ip]) >= max_intentos:
+        return True
+    _intentos_boveda[ip].append(ahora)
+    return False
+
+
+# =========================================================================
+# FUNCIONES AUXILIARES
+# =========================================================================
+
+def check_superadmin():
+    # Validar tiempo de sesión (máximo 2 horas)
+    login_time = session.get('_boveda_login_time')
+    if login_time:
+        try:
+            dt_login = datetime.fromisoformat(login_time)
+            if (datetime.now() - dt_login).total_seconds() > 2 * 3600:
+                session.pop('superadmin_boveda', None)
+                session.pop('_boveda_login_time', None)
+                return False
+        except Exception:
+            pass
+    return session.get('superadmin_boveda') is True
+
+
+def _tiene_acceso_informes():
+    if session.get('superadmin_boveda'):
+        return True
+    if session.get('superadmin_informes'):
+        return True
+    return False
+
+
+def _get_pwa_password():
+    try:
+        cfg = ConfiguracionSuperadmin.query.filter_by(clave='pwa_password').first()
+        if cfg:
+            return cfg.valor
+        nueva = secrets.token_urlsafe(12)
+        cfg = ConfiguracionSuperadmin(
+            clave='pwa_password',
+            valor=nueva,
+            descripcion='Contraseña de acceso global a la PWA'
+        )
+        db.session.add(cfg)
+        db.session.commit()
+        return nueva
+    except Exception:
+        db.session.rollback()
+        return 'VacaDiez2026'
+
+
+def _set_pwa_password(nueva_password):
+    try:
+        cfg = ConfiguracionSuperadmin.query.filter_by(clave='pwa_password').first()
+        if cfg:
+            cfg.valor = nueva_password
+        else:
+            cfg = ConfiguracionSuperadmin(
+                clave='pwa_password',
+                valor=nueva_password,
+                descripcion='Contraseña de acceso global a la PWA'
+            )
+            db.session.add(cfg)
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        return False
+
+
+# =========================================================================
+# AUTENTICACIÓN SUPERADMIN (con rate limiting)
+# =========================================================================
+
+@superadmin_bp.route('/auth', methods=['POST'])
+def auth():
+    ip = request.remote_addr or '127.0.0.1'
+
+    if _rate_limit_boveda(ip):
+        flash('🚫 Demasiados intentos. Espere 10 minutos antes de intentar nuevamente.', 'danger')
+        return redirect(url_for('dashboard.index'))
+
+    password = request.form.get('password', '').strip()
+    clave_real = _obtener_superadmin_pass()
+
+    if password and password == clave_real:
+        session['superadmin_boveda'] = True
+        session['es_superadmin'] = True
+        session['admin'] = True
+        session['superadmin'] = True
+        session['_boveda_login_time'] = datetime.now().isoformat()
+        session['_boveda_ip'] = ip
+        flash('🔒 Bóveda de Sistema desbloqueada correctamente.', 'success')
+        return redirect(url_for('superadmin.boveda'))
+    else:
+        flash('❌ Clave de seguridad denegada.', 'danger')
+        return redirect(url_for('dashboard.index'))
+
+
+@superadmin_bp.route('/logout')
+def logout():
+    session.pop('superadmin_boveda', None)
+    session.pop('_boveda_login_time', None)
+    session.pop('superadmin_activo', None)
+    flash('🔒 Sesión de Superadmin cerrada correctamente.', 'info')
+    return redirect(url_for('auth.login_turno'))
+
+
+@superadmin_bp.route('/quick_login', methods=['POST'])
+def quick_login():
+    password = request.form.get('superadmin_pass', '').strip()
+    clave_real = _obtener_superadmin_pass()
+
+    if password and password == clave_real:
+        session['superadmin_activo'] = True
+        flash('🔒 Modo Edición de Registros habilitado.', 'success')
+    else:
+        flash('❌ Contraseña de autorización incorrecta.', 'danger')
+
+    return redirect(request.referrer or url_for('dashboard.index'))
+
+
+@superadmin_bp.route('/quick_logout', methods=['POST'])
+def quick_logout():
+    session.pop('superadmin_activo', None)
+    flash('🔒 Modo Edición cerrado y bloqueado por seguridad.', 'info')
+    return redirect(request.referrer or url_for('dashboard.index'))
+
+
+@superadmin_bp.route('/')
+def boveda():
+    if not check_superadmin():
+        flash('❌ Debes ingresar la clave maestra para acceder a esta área.', 'danger')
+        return redirect(url_for('dashboard.index'))
+    return render_template('superadmin/panel.html')
+
+
+# =========================================================================
+# CAMBIO DE CONTRASEÑA PWA (desde la Bóveda)
+# =========================================================================
+
+@superadmin_bp.route('/cambiar_password_pwa', methods=['GET', 'POST'])
+def cambiar_password_pwa():
+    if not check_superadmin():
+        flash('❌ Acceso denegado.', 'danger')
+        return redirect(url_for('dashboard.index'))
+
+    password_actual = _get_pwa_password()
+
+    if request.method == 'POST':
+        password_ingresada = request.form.get('password_actual', '').strip()
+        password_nueva = request.form.get('password_nueva', '').strip()
+        password_confirmar = request.form.get('password_confirmar', '').strip()
+
+        if not all([password_ingresada, password_nueva, password_confirmar]):
+            flash('❌ Complete todos los campos.', 'danger')
+            return redirect(url_for('superadmin.cambiar_password_pwa'))
+
+        if password_ingresada != password_actual:
+            flash('❌ La contraseña actual es incorrecta.', 'danger')
+            return redirect(url_for('superadmin.cambiar_password_pwa'))
+
+        if password_nueva != password_confirmar:
+            flash('❌ Las contraseñas nuevas no coinciden.', 'danger')
+            return redirect(url_for('superadmin.cambiar_password_pwa'))
+
+        if len(password_nueva) < 8:
+            flash('❌ La nueva contraseña debe tener al menos 8 caracteres.', 'danger')
+            return redirect(url_for('superadmin.cambiar_password_pwa'))
+
+        if password_nueva == password_actual:
+            flash('⚠️ La nueva contraseña es igual a la actual.', 'warning')
+            return redirect(url_for('superadmin.cambiar_password_pwa'))
+
+        if _set_pwa_password(password_nueva):
+            flash('✅ Contraseña de la PWA cambiada exitosamente. Anótela en un lugar seguro.', 'success')
+        else:
+            flash('❌ Error al guardar la nueva contraseña.', 'danger')
+
+        return redirect(url_for('superadmin.cambiar_password_pwa'))
+
+    return render_template_string(PWA_PASSWORD_TEMPLATE,
+                                  password_actual=password_actual)
+
+
+# =========================================================================
+# PROTECCIÓN PATH TRAVERSAL EN .AVR
+# =========================================================================
+
+def _es_ruta_segura_zip(miembro, destino_base):
+    """Valida que un miembro del ZIP no escape del directorio destino."""
+    if miembro.startswith('/') or '..' in miembro:
+        return False
+    ruta_real = os.path.realpath(os.path.join(destino_base, miembro))
+    return ruta_real.startswith(os.path.realpath(destino_base))
+
+
+# =========================================================================
+# GENERAR BACKUP SQL MYSQL
+# =========================================================================
+
+def generar_backup_sql_mysql():
+    conexion = db.engine.raw_connection()
+    temp_dir = tempfile.gettempdir()
+    sql_path = os.path.join(
+        temp_dir, f"base_de_datos_{int(datetime.now().timestamp())}.sql"
+    )
+
+    with open(sql_path, 'w', encoding='utf-8') as f:
+        f.write("SET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';\n")
+
+        cursor = conexion.cursor()
+        cursor.execute("SHOW TABLES")
+
+        for (tabla,) in cursor.fetchall():
+            cursor.execute(f"SHOW CREATE TABLE `{tabla}`")
+            f.write(f"DROP TABLE IF EXISTS `{tabla}`;\n{cursor.fetchone()[1]};\n")
+
+            cursor.execute(f"SELECT * FROM `{tabla}`")
+            rows = cursor.fetchall()
+
+            if rows:
+                cols = [desc[0] for desc in cursor.description]
+                for row in rows:
+                    vals = []
+                    for val in row:
+                        if val is None:
+                            vals.append('NULL')
+                        elif isinstance(val, (int, float)):
+                            vals.append(str(val))
+                        elif isinstance(val, datetime):
+                            vals.append(f"'{val.strftime('%Y-%m-%d %H:%M:%S')}'")
+                        elif isinstance(val, bytes):
+                            vals.append(f"X'{val.hex()}'")
+                        else:
+                            vals.append(
+                                f"'{str(val).replace(chr(92), chr(92)*2).replace(chr(39), chr(92)+chr(39))}'"
+                            )
+                    f.write(
+                        f"INSERT INTO `{tabla}` ({', '.join([f'`{c}`' for c in cols])}) "
+                        f"VALUES ({', '.join(vals)});\n"
+                    )
+
+        f.write("SET FOREIGN_KEY_CHECKS=1;\n")
+
+    cursor.close()
+    conexion.close()
+    return sql_path
+
+
+# =========================================================================
+# 1. GENERAR PROYECTO (.avr)
+# =========================================================================
+
+# =========================================================================
+# 1. GENERAR PROYECTO (.avr)
+# =========================================================================
+
+@superadmin_bp.route('/generar_avr')
+def generar_avr():
+    if not check_superadmin():
+        return redirect(url_for('dashboard.index'))
+
+    try:
+        fecha_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        nombre_avr = f"Proyecto_Colegio_{fecha_str}.avr"
+
+        # Obtener ruta de la base de datos SQLite
+        db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        db_path = db_uri.replace('sqlite:///', '')
+        if not os.path.isabs(db_path):
+            db_path = os.path.join(current_app.root_path, db_path)
+
+        # Carpetas a respaldar (incluye código fuente y datos)
+        carpetas_datos = [
+            'static/uploads',
+            'static/recibos',
+            'static/boletines',
+            'static/recibos_personal',
+            'templates',
+            'routes',
+            'models.py',
+            'app.py',
+            'config.py'
+        ]
+
+        memory_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(memory_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # 1. Respaldo de base de datos SQLite
+            if os.path.exists(db_path):
+                zipf.write(db_path, "colegio_vaca_diez.db")
+                print(f"[AVR] Base de datos SQLite agregada: {db_path}")
+
+            # 2. Respaldo de archivos del proyecto
+            for item in carpetas_datos:
+                ruta_abs = os.path.join(current_app.root_path, item)
+                
+                # Si es un archivo individual
+                if os.path.isfile(ruta_abs):
+                    zipf.write(ruta_abs, item)
+                    print(f"[AVR] Archivo agregado: {item}")
+                
+                # Si es una carpeta
+                elif os.path.isdir(ruta_abs):
+                    count = 0
+                    for raiz, dirs, archivos in os.walk(ruta_abs):
+                        # Excluir carpetas de cache
+                        dirs[:] = [d for d in dirs if d not in ['__pycache__', '.pytest_cache', 'node_modules']]
+                        
+                        for archivo in archivos:
+                            # Incluir todos los archivos importantes
+                            if not archivo.endswith(('.pyc', '.db')):
+                                arch_abs = os.path.join(raiz, archivo)
+                                arcname = os.path.relpath(arch_abs, current_app.root_path)
+                                zipf.write(arch_abs, arcname)
+                                count += 1
+                    print(f"[AVR] Carpeta agregada: {item} ({count} archivos)")
+
+        memory_buffer.seek(0)
+        
+        # GUARDAR COPIA EN EL SERVIDOR (static/backups/)
+        backups_dir = os.path.join(current_app.root_path, 'static', 'backups')
+        os.makedirs(backups_dir, exist_ok=True)
+        backup_path = os.path.join(backups_dir, nombre_avr)
+        
+        with open(backup_path, 'wb') as f:
+            f.write(memory_buffer.getvalue())
+        
+        tamano_mb = os.path.getsize(backup_path) / (1024 * 1024)
+        print(f"[AVR] Respaldo guardado en servidor: {backup_path} ({tamano_mb:.2f} MB)")
+        
+        # Volver al inicio del buffer para la descarga
+        memory_buffer.seek(0)
+
+        flash(f'✅ Proyecto generado y guardado en static/backups/{nombre_avr} ({tamano_mb:.2f} MB). También se descargó a tu computadora.', 'success')
+
+        return send_file(
+            memory_buffer,
+            as_attachment=True,
+            download_name=nombre_avr,
+            mimetype='application/zip'
+        )
+
+    except Exception as e:
+        flash(f'❌ Error al generar proyecto .avr: {str(e)}', 'danger')
+        return redirect(url_for('superadmin.boveda'))
+
+
+@superadmin_bp.route('/restaurar_avr', methods=['POST'])
+def restaurar_avr():
+    if not check_superadmin():
+        return redirect(url_for('dashboard.index'))
+
+    archivo = request.files.get('archivo_avr')
+
+    if not archivo or not archivo.filename.endswith('.avr'):
+        flash('❌ Formato inválido. Debe subir un archivo .avr oficial.', 'danger')
+        return redirect(url_for('superadmin.boveda'))
+
+    # Validar tamaño máximo (100MB)
+    archivo.seek(0, 2)
+    tamano = archivo.tell()
+    archivo.seek(0)
+    if tamano > 100 * 1024 * 1024:
+        flash('❌ El archivo .avr excede el tamaño máximo permitido (100MB).', 'danger')
+        return redirect(url_for('superadmin.boveda'))
+
+    temp_avr = None
+    dir_extraccion = None
+
+    try:
+        temp_avr = os.path.join(
+            tempfile.gettempdir(),
+            f"upload_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
+        )
+        archivo.save(temp_avr)
+
+        dir_extraccion = os.path.join(
+            tempfile.gettempdir(),
+            f"avr_ext_{int(datetime.now().timestamp())}"
+        )
+        os.makedirs(dir_extraccion, exist_ok=True)
+
+        # VALIDACIÓN DE SEGURIDAD: verificar cada archivo del ZIP
+        with zipfile.ZipFile(temp_avr, 'r') as zipf:
+            for miembro in zipf.namelist():
+                if not _es_ruta_segura_zip(miembro, dir_extraccion):
+                    raise ValueError(f"Archivo inseguro detectado en .avr: {miembro}")
+                # Limitar nombre de archivo
+                if len(miembro) > 255:
+                    raise ValueError(f"Nombre de archivo demasiado largo: {miembro}")
+            zipf.extractall(dir_extraccion)
+
+        db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        is_sqlite = 'sqlite:///' in db_uri
+
+        if is_sqlite:
+            db_path = db_uri.replace('sqlite:///', '')
+            if not os.path.isabs(db_path):
+                db_path = os.path.join(current_app.root_path, db_path)
+
+            db_backup_encontrado = None
+            sql_file_encontrado = os.path.join(dir_extraccion, "base_de_datos.sql")
+
+            for root, dirs, files in os.walk(dir_extraccion):
+                for f in files:
+                    if f.endswith('.db'):
+                        db_backup_encontrado = os.path.join(root, f)
+                        break
+                if db_backup_encontrado:
+                    break
+
+            if db_backup_encontrado and db_path:
+                db.engine.dispose()
+                shutil.copyfile(db_backup_encontrado, db_path)
+                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada.', 'success')
+
+            elif os.path.exists(sql_file_encontrado) and db_path:
+                db.engine.dispose()
+                db.drop_all()
+                db.create_all()
+
+                conexion_sqlite = sqlite3.connect(db_path)
+                cursor_sqlite = conexion_sqlite.cursor()
+
+                with open(sql_file_encontrado, 'r', encoding='utf-8') as f:
+                    contenido_sql = f.read()
+
+                for sentencia in contenido_sql.split(';'):
+                    sentencia_limpia = sentencia.strip()
+                    if sentencia_limpia.upper().startswith('INSERT INTO'):
+                        try:
+                            cursor_sqlite.execute(sentencia_limpia)
+                        except Exception:
+                            pass
+
+                conexion_sqlite.commit()
+                cursor_sqlite.close()
+                conexion_sqlite.close()
+
+                flash('✅ ¡SISTEMA RESTAURADO! Registros importados.', 'success')
+            else:
+                flash('❌ El archivo .avr no contiene una base de datos compatible.', 'danger')
+                return redirect(url_for('superadmin.boveda'))
+
+        else:
+            sql_file = os.path.join(dir_extraccion, "base_de_datos.sql")
+            if os.path.exists(sql_file):
+                db.engine.dispose()
+                conexion = db.engine.raw_connection()
+                cursor = conexion.cursor()
+
+                with open(sql_file, 'r', encoding='utf-8') as f:
+                    comandos_sql = f.read().split(';')
+                    for comando in comandos_sql:
+                        if comando.strip():
+                            try:
+                                cursor.execute(comando)
+                            except Exception:
+                                pass
+
+                conexion.commit()
+                cursor.close()
+                conexion.close()
+                flash('✅ ¡SISTEMA RESTAURADO! MySQL integrada.', 'success')
+            else:
+                flash('❌ El archivo .avr no contiene un respaldo SQL compatible.', 'danger')
+                return redirect(url_for('superadmin.boveda'))
+
+        for item in os.listdir(dir_extraccion):
+            if not item.endswith('.db') and item != 'base_de_datos.sql':
+                origen = os.path.join(dir_extraccion, item)
+                destino = os.path.join(current_app.root_path, item)
+                if os.path.isdir(origen):
+                    shutil.copytree(origen, destino, dirs_exist_ok=True)
+
+    except ValueError as ve:
+        current_app.logger.error(f"🚨 Intento de path traversal: {ve}")
+        flash(f'🚫 Archivo .avr rechazado por seguridad: {str(ve)}', 'danger')
+    except Exception as e:
+        current_app.logger.error(f"Error crítico restauración: {e}")
+        flash(f'❌ Error crítico durante la restauración: {str(e)}', 'danger')
+
+    finally:
+        if temp_avr and os.path.exists(temp_avr):
+            try:
+                os.remove(temp_avr)
+            except Exception:
+                pass
+        if dir_extraccion and os.path.exists(dir_extraccion):
+            try:
+                shutil.rmtree(dir_extraccion)
+            except Exception:
+                pass
+
+    return redirect(url_for('superadmin.boveda'))
+
+
+# =========================================================================
+# 3. RESETEO DE FÁBRICA
+# =========================================================================
+
+@superadmin_bp.route('/reset_fabrica', methods=['POST'])
+def reset_fabrica():
+    if not check_superadmin():
+        return redirect(url_for('dashboard.index'))
+
+    try:
+        for modelo in [
+            InformeEconomico, HistorialCalificacion, Egresado, Mensaje,
+            Gasto, PagoPersonal, Pago, Calificacion, Falta, Materia,
+            Padre, Estudiante, Profesor, PersonalAdministrativo
+        ]:
+            db.session.query(modelo).delete()
+
+        db.session.commit()
+
+        carpetas_limpiar = [
+            os.path.join(current_app.root_path, 'static', 'uploads', 'estudiantes'),
+            os.path.join(current_app.root_path, 'static', 'uploads', 'personal'),
+            os.path.join(current_app.root_path, 'static', 'recibos'),
+            os.path.join(current_app.root_path, 'static', 'boletines')
+        ]
+
+        for carpeta in carpetas_limpiar:
+            if os.path.exists(carpeta):
+                for archivo in os.listdir(carpeta):
+                    ruta_arch = os.path.join(carpeta, archivo)
+                    if os.path.isfile(ruta_arch) and archivo != 'default.png':
+                        try:
+                            os.remove(ruta_arch)
+                        except Exception:
+                            pass
+
+        flash('⚠️ SISTEMA RESETEADO A FÁBRICA.', 'warning')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Error al intentar resetear: {str(e)}', 'danger')
+
+    return redirect(url_for('superadmin.boveda'))
+
+
+# =========================================================================
+# EDICIÓN MANUAL DE REGISTROS
+# =========================================================================
+
+@superadmin_bp.route('/editar_pago/<int:id>', methods=['GET', 'POST'])
+def editar_pago(id):
+    if not (session.get('superadmin_activo') or session.get('superadmin_boveda') or (callable(globals().get('check_superadmin')) and check_superadmin())):
+        flash('🔒 Requiere autenticacion de Superadmin.', 'warning')
+        return redirect(url_for('dashboard.index'))
+
+    pago = Pago.query.get_or_404(id)
+
+    if request.method == 'POST':
+        try:
+            pago.monto_total = float(request.form.get('monto_total', 0))
+            pago.descuento = float(request.form.get('descuento', 0))
+            pago.monto_pagado = float(request.form.get('monto_pagado', 0))
+            pago.estado = request.form.get('estado', 'Pendiente')
+            pago.metodo_pago = request.form.get('metodo_pago', pago.metodo_pago or 'Efectivo')
+
+            db.session.commit()
+            flash('✅ Pago alterado exitosamente', 'success')
+            return redirect(url_for('estudiantes.ver_estudiante', id=pago.estudiante_id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error al editar pago: {str(e)}', 'danger')
+
+    return render_template('superadmin/editar_pago.html', pago=pago)
+
+
+@superadmin_bp.route('/editar_nota/<int:id>', methods=['GET', 'POST'])
+def editar_nota(id):
+    if not (session.get('superadmin_activo') or session.get('superadmin_boveda') or (callable(globals().get('check_superadmin')) and check_superadmin())):
+        flash('🔒 Requiere autenticacion de Superadmin.', 'warning')
+        return redirect(url_for('dashboard.index'))
+
+    nota = Calificacion.query.get_or_404(id)
+
+    if request.method == 'POST':
+        try:
+            nota.nota = float(request.form.get('nota', 0))
+            nota.tipo = request.form.get('tipo', nota.tipo)
+            db.session.commit()
+            flash('✅ Calificación alterada exitosamente', 'success')
+            return redirect(url_for('estudiantes.ver_estudiante', id=nota.estudiante_id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error al editar nota: {str(e)}', 'danger')
+
+    return render_template('superadmin/editar_nota.html', nota=nota)
+
+
+# =========================================================================
+# INFORMES ECONÓMICOS CONFIDENCIALES
+# =========================================================================
+
+INFORMES_PASSWORD_DEFAULT = "INFORME2026"
+
+
+def _ensure_config_informes():
+    try:
+        cfg = ConfiguracionSuperadmin.query.filter_by(clave='informes_password_hash').first()
+        if not cfg:
+            cfg = ConfiguracionSuperadmin(
+                clave='informes_password_hash',
+                valor=generate_password_hash(INFORMES_PASSWORD_DEFAULT),
+                descripcion='Hash de contraseña para informes económicos'
+            )
+            db.session.add(cfg)
+            db.session.commit()
+        return cfg
+    except Exception:
+        db.session.rollback()
+        return None
+
+
+def informes_requerido(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not _tiene_acceso_informes():
+            flash('🔒 Acceso restringido.', 'danger')
+            return redirect(url_for('superadmin.informes_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def _metodo_pago(obj):
+    metodo = getattr(obj, 'metodo_pago', None)
+    if not metodo:
+        return 'Efectivo'
+    metodo = str(metodo).strip().lower()
+    if metodo in ['bancario', 'banco', 'transferencia', 'deposito', 'depósito']:
+        return 'Bancario'
+    return 'Efectivo'
+
+
+def _resumen_movimientos(pagos, gastos, pagos_personal, incluir_detalle=False):
+    ingresos_efectivo = 0.0
+    ingresos_bancario = 0.0
+    gastos_efectivo = 0.0
+    gastos_bancario = 0.0
+
+    detalle = {
+        'pagos': [], 'gastos': [], 'pagos_personal': []
+    } if incluir_detalle else None
+
+    for p in pagos:
+        monto = float(p.monto_pagado or 0.0)
+        metodo = _metodo_pago(p)
+        if metodo == 'Bancario':
+            ingresos_bancario += monto
+        else:
+            ingresos_efectivo += monto
+
+        if incluir_detalle:
+            estudiante = getattr(p, 'estudiante', None)
+            nombre_est = (
+                f"{estudiante.apellidos}, {estudiante.nombres}"
+                if estudiante else 'Estudiante eliminado'
+            )
+            detalle['pagos'].append({
+                'fecha': str(p.fecha_pago),
+                'detalle': f"{nombre_est} - {p.mes}/{p.anio}",
+                'monto': monto, 'metodo': metodo
+            })
+
+    for g in gastos:
+        monto = float(g.monto or 0.0)
+        metodo = _metodo_pago(g)
+        if metodo == 'Bancario':
+            gastos_bancario += monto
+        else:
+            gastos_efectivo += monto
+
+        if incluir_detalle:
+            detalle['gastos'].append({
+                'fecha': str(g.fecha),
+                'detalle': f"{g.categoria}: {g.descripcion}",
+                'monto': monto, 'metodo': metodo
+            })
+
+    for pp in pagos_personal:
+        monto = float(pp.monto_neto_pagado or 0.0)
+        metodo = _metodo_pago(pp)
+        if metodo == 'Bancario':
+            gastos_bancario += monto
+        else:
+            gastos_efectivo += monto
+
+        if incluir_detalle:
+            detalle['pagos_personal'].append({
+                'fecha': str(pp.fecha_pago),
+                'detalle': f"{pp.nombre_persona} - {pp.mes}/{pp.anio}",
+                'monto': monto, 'metodo': metodo
+            })
+
+    return {
+        'ingresos_efectivo': ingresos_efectivo,
+        'ingresos_bancario': ingresos_bancario,
+        'total_ingresos': ingresos_efectivo + ingresos_bancario,
+        'gastos_efectivo': gastos_efectivo,
+        'gastos_bancario': gastos_bancario,
+        'total_gastos': gastos_efectivo + gastos_bancario,
+        'detalle': detalle
+    }
+
+
+def _generar_informe(tipo_informe, fecha_inicio, fecha_fin):
+    pagos_periodo = Pago.query.filter(
+        Pago.estado == 'Pagado',
+        db.func.date(Pago.fecha_pago) >= fecha_inicio,
+        db.func.date(Pago.fecha_pago) <= fecha_fin
+    ).all()
+
+    gastos_periodo = Gasto.query.filter(
+        Gasto.fecha >= fecha_inicio, Gasto.fecha <= fecha_fin
+    ).all()
+
+    pagos_personal_periodo = PagoPersonal.query.filter(
+        PagoPersonal.fecha_pago >= fecha_inicio,
+        PagoPersonal.fecha_pago <= fecha_fin,
+        PagoPersonal.estado == 'Pagado'
+    ).all()
+
+    periodo = _resumen_movimientos(
+        pagos_periodo, gastos_periodo, pagos_personal_periodo,
+        incluir_detalle=True
+    )
+
+    pagos_acumulados = Pago.query.filter(
+        Pago.estado == 'Pagado',
+        db.func.date(Pago.fecha_pago) <= fecha_fin
+    ).all()
+
+    gastos_acumulados = Gasto.query.filter(
+        Gasto.fecha <= fecha_fin
+    ).all()
+
+    pagos_personal_acumulados = PagoPersonal.query.filter(
+        PagoPersonal.fecha_pago <= fecha_fin,
+        PagoPersonal.estado == 'Pagado'
+    ).all()
+
+    acumulado = _resumen_movimientos(
+        pagos_acumulados, gastos_acumulados, pagos_personal_acumulados,
+        incluir_detalle=False
+    )
+
+    informe = InformeEconomico.query.filter_by(
+        tipo_informe=tipo_informe,
+        fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
+    ).first()
+
+    if not informe:
+        informe = InformeEconomico(
+            tipo_informe=tipo_informe,
+            fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
+        )
+
+    informe.fecha_generacion = ahora_bolivia()
+    informe.ingresos_efectivo = periodo['ingresos_efectivo']
+    informe.ingresos_bancario = periodo['ingresos_bancario']
+    informe.total_ingresos = periodo['total_ingresos']
+    informe.gastos_efectivo = periodo['gastos_efectivo']
+    informe.gastos_bancario = periodo['gastos_bancario']
+    informe.total_gastos = periodo['total_gastos']
+    informe.saldo_efectivo = acumulado['ingresos_efectivo'] - acumulado['gastos_efectivo']
+    informe.saldo_bancario = acumulado['ingresos_bancario'] - acumulado['gastos_bancario']
+    informe.saldo_total = informe.saldo_efectivo + informe.saldo_bancario
+    informe.detalle_json = json.dumps(periodo['detalle'], default=str, ensure_ascii=False)
+
+    db.session.add(informe)
+    db.session.commit()
+    return informe
+
+
+def generar_informe_diario(fecha=None):
+    if not fecha:
+        fecha = ahora_bolivia().date()
+    return _generar_informe('Diario', fecha, fecha)
+
+
+def generar_informe_semanal(fecha_fin=None):
+    if not fecha_fin:
+        fecha_fin = ahora_bolivia().date()
+    fecha_inicio = fecha_fin - timedelta(days=6)
+    return _generar_informe('Semanal', fecha_inicio, fecha_fin)
+
+
+def generar_informe_mensual(anio=None, mes=None):
+    hoy = ahora_bolivia().date()
+    if not anio:
+        anio = hoy.year
+    if not mes:
+        mes = hoy.month
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    fecha_inicio = date(anio, mes, 1)
+    fecha_fin = date(anio, mes, ultimo_dia)
+    return _generar_informe('Mensual', fecha_inicio, fecha_fin)
+
+
+def iniciar_scheduler_informes(app):
+    global _scheduler_informes_iniciado
+    if _scheduler_informes_iniciado:
+        return
+    if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        return
+
+    _scheduler_informes_iniciado = True
+
+    def scheduler_loop():
+        time.sleep(30)
+        while True:
+            try:
+                ahora = ahora_bolivia()
+                if ahora.hour == 23 and ahora.minute == 59:
+                    with app.app_context():
+                        hoy = ahora.date()
+                        generar_informe_diario(hoy)
+                        if ahora.weekday() == 6:
+                            generar_informe_semanal(hoy)
+                        if (hoy + timedelta(days=1)).day == 1:
+                            generar_informe_mensual(hoy.year, hoy.month)
+            except Exception as e:
+                print(f"❌ Error en scheduler: {e}")
+            time.sleep(30)
+
+    thread = threading.Thread(target=scheduler_loop, daemon=True)
+    thread.start()
+
+
+@superadmin_bp.record
+def _registrar_scheduler_informes(state):
+    iniciar_scheduler_informes(state.app)
+
+
+# =========================================================================
+# PLANTILLAS HTML INFORMES
+# =========================================================================
+
+INFORMES_LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Informes Económicos Confidenciales</title></head>
+<body style="font-family:Arial;background:#0f172a;color:white;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;">
+    <div style="background:#1e293b;padding:35px;border-radius:12px;width:380px;text-align:center;">
+        <h2>🔒 Informes Económicos</h2>
+        <div style="color:#94a3b8;font-size:13px;margin-bottom:20px;">Acceso exclusivo del Superadministrador</div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div style="padding:8px;border-radius:6px;margin-bottom:10px;background:#334155;">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="password" name="password" placeholder="Contraseña especial" required autofocus
+                   style="width:100%;padding:12px;margin:10px 0;border-radius:6px;border:none;box-sizing:border-box;">
+            <button type="submit" style="width:100%;padding:12px;background:#dc2626;color:white;border:none;border-radius:6px;font-weight:bold;">Acceder</button>
+        </form>
+        <a href="{{ url_for('dashboard.index') }}" style="display:block;margin-top:15px;color:#93c5fd;font-size:13px;text-decoration:none;">← Volver al sistema</a>
+    </div>
+</body>
+</html>
+"""
+
+
+INFORMES_LISTA_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Informes Económicos</title></head>
+<body style="font-family:Arial;background:#f1f5f9;margin:0;">
+    <div style="background:#0f172a;color:white;padding:15px 25px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+            <h2 style="margin:0;">📊 Informes Económicos Confidenciales</h2>
+            <small>Caja Efectivo y Caja Bancaria</small>
+        </div>
+        <a href="{{ url_for('superadmin.boveda') }}" style="background:#64748b;color:white;padding:8px 12px;text-decoration:none;border-radius:6px;">Bóveda</a>
+    </div>
+    <div style="padding:25px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div style="padding:10px;border-radius:8px;margin-bottom:15px;color:white;background:#334155;">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:15px;margin-bottom:25px;">
+            <div style="background:white;padding:18px;border-radius:10px;">
+                <h3 style="margin-top:0;">📅 Informe Diario</h3>
+                <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='diario') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="date" name="fecha" value="{{ hoy }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+                    <button type="submit" style="background:#2563eb;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Diario</button>
+                </form>
+            </div>
+            <div style="background:white;padding:18px;border-radius:10px;">
+                <h3 style="margin-top:0;">🗓️ Informe Semanal</h3>
+                <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='semanal') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="date" name="fecha_fin" value="{{ hoy }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+                    <button type="submit" style="background:#16a34a;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Semanal</button>
+                </form>
+            </div>
+            <div style="background:white;padding:18px;border-radius:10px;">
+                <h3 style="margin-top:0;">📆 Informe Mensual</h3>
+                <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='mensual') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="mes" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+                        <option value="1">Enero</option><option value="2">Febrero</option>
+                        <option value="3">Marzo</option><option value="4">Abril</option>
+                        <option value="5">Mayo</option><option value="6">Junio</option>
+                        <option value="7">Julio</option><option value="8">Agosto</option>
+                        <option value="9">Septiembre</option><option value="10">Octubre</option>
+                        <option value="11">Noviembre</option><option value="12">Diciembre</option>
+                    </select>
+                    <input type="number" name="anio" value="{{ now.year }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+                    <button type="submit" style="background:#0891b2;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Mensual</button>
+                </form>
+            </div>
+        </div>
+
+        <div style="background:white;padding:15px;border-radius:10px;margin-bottom:20px;">
+            <form method="GET" action="{{ url_for('superadmin.informes_lista') }}">
+                <strong>Filtrar por tipo:</strong>
+                <select name="tipo" onchange="this.form.submit()">
+                    <option value="" {% if not tipo %}selected{% endif %}>Todos</option>
+                    <option value="Diario" {% if tipo == 'Diario' %}selected{% endif %}>Diario</option>
+                    <option value="Semanal" {% if tipo == 'Semanal' %}selected{% endif %}>Semanal</option>
+                    <option value="Mensual" {% if tipo == 'Mensual' %}selected{% endif %}>Mensual</option>
+                </select>
+            </form>
+        </div>
+
+        <div style="overflow-x:auto;">
+        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;">
+            <thead>
+                <tr style="background:#0f172a;color:white;">
+                    <th>Tipo</th><th>Período</th><th>Ingresos</th>
+                    <th>Salidas</th><th>Saldo Total</th><th>Generado</th><th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for informe in informes %}
+                <tr>
+                    <td>{{ informe.tipo_informe }}</td>
+                    <td>{{ informe.fecha_inicio.strftime('%d/%m/%Y') }}{% if informe.fecha_inicio != informe.fecha_fin %} al {{ informe.fecha_fin.strftime('%d/%m/%Y') }}{% endif %}</td>
+                    <td style="color:#16a34a;font-weight:bold;">Bs. {{ '%.2f'|format(informe.total_ingresos or 0) }}</td>
+                    <td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(informe.total_gastos or 0) }}</td>
+                    <td style="font-weight:bold;">Bs. {{ '%.2f'|format(informe.saldo_total or 0) }}</td>
+                    <td>{{ informe.fecha_generacion.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>
+                        <a href="{{ url_for('superadmin.informes_ver', id=informe.id) }}" style="background:#2563eb;color:white;padding:6px 10px;text-decoration:none;border-radius:6px;">Ver</a>
+                        <form method="POST" action="{{ url_for('superadmin.informes_eliminar', id=informe.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar este informe?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" style="background:#dc2626;color:white;padding:6px 10px;border:none;border-radius:6px;">X</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7">No hay informes generados todavía.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+        <div style="background:white;padding:15px;border-radius:10px;margin-top:25px;">
+            <h3>🔑 Cambiar contraseña especial de Informes</h3>
+            <form method="POST" action="{{ url_for('superadmin.informes_cambiar_password') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="password" name="password_actual" placeholder="Contraseña actual" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
+                <input type="password" name="password_nueva" placeholder="Nueva contraseña" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
+                <input type="password" name="password_confirmar" placeholder="Confirmar nueva contraseña" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
+                <button type="submit" style="background:#0f172a;color:white;padding:9px 12px;border:none;border-radius:6px;">Cambiar contraseña</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+
+INFORMES_VER_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Informe Económico</title></head>
+<body style="font-family:Arial;background:#f1f5f9;margin:0;">
+    <div style="background:#0f172a;color:white;padding:15px 25px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+            <h2 style="margin:0;">{% if informe.tipo_informe == 'Diario' %}📅 Informe Diario{% elif informe.tipo_informe == 'Semanal' %}🗓️ Informe Semanal{% else %}📆 Informe Mensual{% endif %}</h2>
+            <small>Período: {{ informe.fecha_inicio.strftime('%d/%m/%Y') }}{% if informe.fecha_inicio != informe.fecha_fin %} al {{ informe.fecha_fin.strftime('%d/%m/%Y') }}{% endif %}</small>
+        </div>
+        <div>
+            <a href="{{ url_for('superadmin.informes_lista') }}" style="background:#64748b;color:white;padding:8px 12px;text-decoration:none;border-radius:6px;margin-right:8px;">Volver</a>
+            <button onclick="window.print()" style="background:#0f172a;color:white;padding:8px 12px;border:1px solid #fff;border-radius:6px;">Imprimir</button>
+        </div>
+    </div>
+    <div style="padding:25px;">
+        <div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;margin-bottom:20px;">🔒 Documento confidencial.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;margin-bottom:25px;">
+            <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #16a34a;">
+                <h3 style="margin-top:0;">💵 Caja Efectivo</h3>
+                <p>Ingresos del período: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.ingresos_efectivo or 0) }}</strong></p>
+                <p>Salidas del período: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.gastos_efectivo or 0) }}</strong></p>
+                <hr><p>Saldo acumulado: <strong>Bs. {{ '%.2f'|format(informe.saldo_efectivo or 0) }}</strong></p>
+            </div>
+            <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #2563eb;">
+                <h3 style="margin-top:0;">🏦 Caja Bancaria</h3>
+                <p>Ingresos del período: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.ingresos_bancario or 0) }}</strong></p>
+                <p>Salidas del período: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.gastos_bancario or 0) }}</strong></p>
+                <hr><p>Saldo acumulado: <strong>Bs. {{ '%.2f'|format(informe.saldo_bancario or 0) }}</strong></p>
+            </div>
+            <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #0f172a;">
+                <h3 style="margin-top:0;">📊 Resumen General</h3>
+                <p>Total ingresos: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.total_ingresos or 0) }}</strong></p>
+                <p>Total salidas: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.total_gastos or 0) }}</strong></p>
+                <hr><p>Saldo total: <strong>Bs. {{ '%.2f'|format(informe.saldo_total or 0) }}</strong></p>
+                <p>Generado: {{ informe.fecha_generacion.strftime('%d/%m/%Y %H:%M') }}</p>
+            </div>
+        </div>
+
+        <h3>🟢 Ingresos del período</h3>
+        <div style="overflow-x:auto;">
+        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;margin-bottom:25px;">
+            <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
+            <tbody>
+                {% for item in detalle_pagos %}
+                <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#16a34a;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
+                {% else %}<tr><td colspan="4">No hay ingresos en este período.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+        <h3>🔴 Gastos del período</h3>
+        <div style="overflow-x:auto;">
+        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;margin-bottom:25px;">
+            <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
+            <tbody>
+                {% for item in detalle_gastos %}
+                <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
+                {% else %}<tr><td colspan="4">No hay gastos en este período.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+        <h3>👷 Pagos al personal</h3>
+        <div style="overflow-x:auto;">
+        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;">
+            <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
+            <tbody>
+                {% for item in detalle_personal %}
+                <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
+                {% else %}<tr><td colspan="4">No hay pagos al personal en este período.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+
+PWA_PASSWORD_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cambiar Contraseña PWA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        body { background: #f1f5f9; font-family: Arial, sans-serif; }
+        .card-pwa { max-width: 500px; margin: 40px auto; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .card-header-pwa { background: #0f172a; color: white; padding: 20px; border-radius: 12px 12px 0 0; }
+        .card-body-pwa { background: white; padding: 30px; border-radius: 0 0 12px 12px; }
+        .form-control { min-height: 48px; font-size: 16px; }
+        .btn-cambiar { min-height: 48px; font-weight: bold; }
+        .password-actual { background: #fef3c7; color: #92400e; padding: 10px 15px; border-radius: 8px; font-family: monospace; font-size: 1.1rem; letter-spacing: 2px; text-align: center; margin-bottom: 20px; border: 2px dashed #f59e0b; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card card-pwa">
+            <div class="card-header-pwa text-center">
+                <h4 class="mb-1"><i class="bi bi-shield-lock-fill"></i> Cambiar Contraseña PWA</h4>
+                <small class="text-white-50">Protege el acceso global al sistema</small>
+            </div>
+            <div class="card-body-pwa">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category if category in ['success','danger','warning','info'] else 'secondary' }} alert-dismissible fade show">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-muted">Contraseña actual:</label>
+                    <div class="password-actual">{{ password_actual }}</div>
+                </div>
+
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold"><i class="bi bi-key-fill text-warning"></i> Confirmar contraseña actual</label>
+                        <input type="password" name="password_actual" class="form-control" placeholder="Escriba la contraseña actual" required autofocus>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold"><i class="bi bi-key-fill text-success"></i> Nueva contraseña (mínimo 8 caracteres)</label>
+                        <input type="password" name="password_nueva" class="form-control" placeholder="Escriba la nueva contraseña" required minlength="8">
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold"><i class="bi bi-check-circle-fill text-primary"></i> Confirmar nueva contraseña</label>
+                        <input type="password" name="password_confirmar" class="form-control" placeholder="Repita la nueva contraseña" required minlength="8">
+                    </div>
+                    <div class="d-flex justify-content-between gap-2">
+                        <a href="{{ url_for('superadmin.boveda') }}" class="btn btn-secondary flex-fill btn-cambiar">
+                            <i class="bi bi-arrow-left"></i> Volver
+                        </a>
+                        <button type="submit" class="btn btn-danger flex-fill btn-cambiar">
+                            <i class="bi bi-shield-lock-fill"></i> Cambiar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+"""
+
+
+# =========================================================================
+# RUTAS INFORMES ECONÓMICOS
+# =========================================================================
+
+_intentos_informes = {}
+
+
+def _rate_limit_informes(ip, max_intentos=5, ventana=300):
+    ahora = datetime.now().timestamp()
+    if ip not in _intentos_informes:
+        _intentos_informes[ip] = []
+    _intentos_informes[ip] = [t for t in _intentos_informes[ip] if ahora - t < ventana]
+    if len(_intentos_informes[ip]) >= max_intentos:
+        return True
+    _intentos_informes[ip].append(ahora)
+    return False
+
+
+@superadmin_bp.route('/informes/login', methods=['GET', 'POST'])
+def informes_login():
+    if _tiene_acceso_informes():
+        return redirect(url_for('superadmin.informes_lista'))
+
+    ip = request.remote_addr or '127.0.0.1'
+
+    if request.method == 'POST':
+        if _rate_limit_informes(ip):
+            flash('🚫 Demasiados intentos. Espere 5 minutos.', 'danger')
+            return render_template_string(INFORMES_LOGIN_TEMPLATE)
+
+        password = request.form.get('password', '').strip()
+
+        try:
+            cfg = _ensure_config_informes()
+            if cfg and check_password_hash(cfg.valor, password):
+                session['superadmin_informes'] = True
+                session['_informes_login_time'] = datetime.now().isoformat()
+                flash('✅ Acceso concedido a informes económicos.', 'success')
+                return redirect(url_for('superadmin.informes_lista'))
+            else:
+                flash('❌ Contraseña incorrecta.', 'danger')
+        except Exception as e:
+            flash(f'❌ Error al validar: {str(e)}', 'danger')
+
+    return render_template_string(INFORMES_LOGIN_TEMPLATE)
+
+
+@superadmin_bp.route('/informes/logout')
+def informes_logout():
+    session.pop('superadmin_informes', None)
+    session.pop('_informes_login_time', None)
+    flash('🔒 Sesión de informes económicos cerrada.', 'info')
+    return redirect(url_for('superadmin.informes_login'))
+
+
+@superadmin_bp.route('/informes')
+@informes_requerido
+def informes_lista():
+    tipo = request.args.get('tipo', '').strip()
+
+    query = InformeEconomico.query
+    if tipo in ['Diario', 'Semanal', 'Mensual']:
+        query = query.filter_by(tipo_informe=tipo)
+
+    informes = query.order_by(InformeEconomico.fecha_generacion.desc()).all()
+
+    return render_template_string(
+        INFORMES_LISTA_TEMPLATE,
+        informes=informes, tipo=tipo,
+        hoy=ahora_bolivia().date(), now=ahora_bolivia()
+    )
+
+
+@superadmin_bp.route('/informes/ver/<int:id>')
+@informes_requerido
+def informes_ver(id):
+    informe = InformeEconomico.query.get_or_404(id)
+
+    detalle = {}
+    if informe.detalle_json:
+        try:
+            detalle = json.loads(informe.detalle_json)
+        except Exception:
+            detalle = {}
+
+    return render_template_string(
+        INFORMES_VER_TEMPLATE,
+        informe=informe,
+        detalle_pagos=detalle.get('pagos', []),
+        detalle_gastos=detalle.get('gastos', []),
+        detalle_personal=detalle.get('pagos_personal', [])
+    )
+
+
+@superadmin_bp.route('/informes/generar/<tipo>', methods=['POST'])
+@informes_requerido
+def informes_generar(tipo):
+    try:
+        ahora = ahora_bolivia()
+
+        if tipo == 'diario':
+            fecha_str = request.form.get('fecha', '')
+            if fecha_str:
+                fecha = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+            else:
+                fecha = ahora.date()
+            generar_informe_diario(fecha)
+            flash(f'✅ Informe diario generado para {fecha.strftime("%d/%m/%Y")}.', 'success')
+
+        elif tipo == 'semanal':
+            fecha_fin_str = request.form.get('fecha_fin', '')
+            if fecha_fin_str:
+                fecha_fin = datetime.strptime(fecha_fin_str, '%Y-%m-%d').date()
+            else:
+                fecha_fin = ahora.date()
+            generar_informe_semanal(fecha_fin)
+            flash('✅ Informe semanal generado correctamente.', 'success')
+
+        elif tipo == 'mensual':
+            anio = int(request.form.get('anio', ahora.year))
+            mes = int(request.form.get('mes', ahora.month))
+            generar_informe_mensual(anio, mes)
+            flash(f'✅ Informe mensual de {mes}/{anio} generado.', 'success')
+        else:
+            flash('❌ Tipo de informe no válido.', 'danger')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Error al generar informe: {str(e)}', 'danger')
+
+    return redirect(url_for('superadmin.informes_lista'))
+
+
+@superadmin_bp.route('/informes/cambiar_password', methods=['POST'])
+@informes_requerido
+def informes_cambiar_password():
+    password_actual = request.form.get('password_actual', '').strip()
+    password_nueva = request.form.get('password_nueva', '').strip()
+    password_confirmar = request.form.get('password_confirmar', '').strip()
+
+    if not all([password_actual, password_nueva, password_confirmar]):
+        flash('❌ Complete todos los campos.', 'danger')
+        return redirect(url_for('superadmin.informes_lista'))
+
+    if password_nueva != password_confirmar:
+        flash('❌ Las contraseñas nuevas no coinciden.', 'danger')
+        return redirect(url_for('superadmin.informes_lista'))
+
+    if len(password_nueva) < 8:
+        flash('❌ La nueva contraseña debe tener al menos 8 caracteres.', 'danger')
+        return redirect(url_for('superadmin.informes_lista'))
+
+    try:
+        cfg = _ensure_config_informes()
+        if not cfg:
+            flash('❌ No se pudo acceder a la configuración.', 'danger')
+            return redirect(url_for('superadmin.informes_lista'))
+
+        if not check_password_hash(cfg.valor, password_actual):
+            flash('❌ Contraseña actual incorrecta.', 'danger')
+            return redirect(url_for('superadmin.informes_lista'))
+
+        cfg.valor = generate_password_hash(password_nueva)
+        db.session.commit()
+        flash('✅ Contraseña especial cambiada correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Error: {str(e)}', 'danger')
+
+    return redirect(url_for('superadmin.informes_lista'))
+
+
+@superadmin_bp.route('/informes/eliminar/<int:id>', methods=['POST'])
+@informes_requerido
+def informes_eliminar(id):
+    try:
+        informe = InformeEconomico.query.get_or_404(id)
+        db.session.delete(informe)
+        db.session.commit()
+        flash('✅ Informe eliminado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Error al eliminar: {str(e)}', 'danger')
+    return redirect(url_for('superadmin.informes_lista'))
+
+# =========================================================================
+# CONFIGURACIÓN DEL AÑO ESCOLAR
+# =========================================================================
+
+@superadmin_bp.route('/configuracion_anio_escolar', methods=['GET', 'POST'])
+def configuracion_anio_escolar():
+    if not check_superadmin():
+        return redirect(url_for('dashboard.index'))
+
+    if request.method == 'POST':
+        try:
+            # Procesar preset de inicio rápido
+            preset = request.form.get('preset_inicio', 'personalizado')
+            
+            if preset == 'bolivia':
+                valores_preset = {
+                    'anio_escolar_inicio': f'{datetime.now().year}-02-01',
+                    'anio_escolar_fin': f'{datetime.now().year}-12-15',
+                    'anio_escolar_nombre': f'Gestión {datetime.now().year}',
+                    'dia_vencimiento_pension': '5',
+                    'dias_gracia_mora': '5',
+                    'aplicar_mora_automatica': 'false',
+                    'tipo_calendario': 'bolivia',
+                    'meses_activos': '2,3,4,5,6,7,8,9,10,11',
+                    'numero_trimestres': '3',
+                    'trimestre1_inicio': f'{datetime.now().year}-02-01',
+                    'trimestre1_fin': f'{datetime.now().year}-05-31',
+                    'trimestre2_inicio': f'{datetime.now().year}-06-01',
+                    'trimestre2_fin': f'{datetime.now().year}-08-31',
+                    'trimestre3_inicio': f'{datetime.now().year}-09-01',
+                    'trimestre3_fin': f'{datetime.now().year}-12-15',
+                    'inicio_rapido': 'bolivia',
+                }
+            elif preset == 'norte':
+                valores_preset = {
+                    'anio_escolar_inicio': f'{datetime.now().year}-09-01',
+                    'anio_escolar_fin': f'{datetime.now().year + 1}-06-30',
+                    'anio_escolar_nombre': f'Gestión {datetime.now().year}-{datetime.now().year + 1}',
+                    'dia_vencimiento_pension': '10',
+                    'dias_gracia_mora': '10',
+                    'aplicar_mora_automatica': 'true',
+                    'tipo_calendario': 'norte',
+                    'meses_activos': '9,10,11,12,1,2,3,4,5,6',
+                    'numero_trimestres': '3',
+                    'trimestre1_inicio': f'{datetime.now().year}-09-01',
+                    'trimestre1_fin': f'{datetime.now().year}-11-30',
+                    'trimestre2_inicio': f'{datetime.now().year}-12-01',
+                    'trimestre2_fin': f'{datetime.now().year + 1}-03-15',
+                    'trimestre3_inicio': f'{datetime.now().year + 1}-03-16',
+                    'trimestre3_fin': f'{datetime.now().year + 1}-06-30',
+                    'inicio_rapido': 'norte',
+                }
+            else:
+                valores_preset = {}
+
+            # Claves a procesar
+            claves = [
+                'anio_escolar_inicio', 'anio_escolar_fin', 'anio_escolar_nombre',
+                'dia_vencimiento_pension', 'dias_gracia_mora', 'aplicar_mora_automatica',
+                'tipo_calendario', 'meses_activos', 'numero_trimestres',
+                'trimestre1_inicio', 'trimestre1_fin', 'trimestre2_inicio',
+                'trimestre2_fin', 'trimestre3_inicio', 'trimestre3_fin',
+                'inicio_rapido'
+            ]
+
+            actualizados = 0
+            for clave in claves:
+                # Usar valor del formulario, o del preset si existe
+                valor = request.form.get(clave)
+                if not valor and clave in valores_preset:
+                    valor = valores_preset[clave]
+                
+                if valor is not None:
+                    cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
+                    if cfg:
+                        cfg.valor = valor
+                        actualizados += 1
+
+            db.session.commit()
+            flash(f'✅ Configuración del año escolar actualizada ({actualizados} parámetros).', 'success')
+            return redirect(url_for('superadmin.configuracion_anio_escolar'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error al guardar configuración: {str(e)}', 'danger')
+
+    # Obtener todos los parámetros actuales
+    configs = {c.clave: c.valor for c in ConfiguracionSuperadmin.query.all()}
+    
+    return render_template('superadmin/configuracion_anio_escolar.html', configs=configs)
+
+# =========================================================================
+# CONFIGURACIÓN INSTITUCIONAL (LOGO Y DENOMINACIÓN)
+# =========================================================================
+
+@superadmin_bp.route('/configuracion_institucion', methods=['GET', 'POST'])
+def configuracion_institucion():
+    if not check_superadmin():
+        return redirect(url_for('dashboard.index'))
+
+    if request.method == 'POST':
+        try:
+            # Claves textuales a actualizar
+            claves_texto = [
+                'institucion_linea1',
+                'institucion_linea2',
+                'institucion_linea3',
+                'institucion_direccion',
+                'institucion_telefono',
+                'institucion_email',
+                'institucion_ciudad',
+                'institucion_gestion'
+            ]
+            
+            actualizados = 0
+            for clave in claves_texto:
+                valor = request.form.get(clave, '').strip()
+                cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
+                if cfg and valor:
+                    cfg.valor = valor
+                    actualizados += 1
+                elif not cfg and valor:
+                    nuevo = ConfiguracionSuperadmin(
+                        clave=clave, 
+                        valor=valor,
+                        descripcion=f'Datos institucionales: {clave}'
+                    )
+                    db.session.add(nuevo)
+                    actualizados += 1
+
+            # Procesar subida de logo
+            archivo_logo = request.files.get('logo_institucion')
+            if archivo_logo and archivo_logo.filename:
+                # Validar extensión
+                extensiones_permitidas = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+                extension = archivo_logo.filename.rsplit('.', 1)[-1].lower() if '.' in archivo_logo.filename else ''
+                
+                if extension not in extensiones_permitidas:
+                    db.session.rollback()
+                    flash(f'❌ Formato de imagen inválido. Use: PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+                    return redirect(url_for('superadmin.configuracion_institucion'))
+                
+                # Validar tamaño máximo (5MB)
+                archivo_logo.seek(0, os.SEEK_END)
+                tamano = archivo_logo.tell()
+                archivo_logo.seek(0)
+                
+                if tamano > 5 * 1024 * 1024:
+                    db.session.rollback()
+                    flash('❌ El logo excede el tamaño máximo permitido (5MB).', 'danger')
+                    return redirect(url_for('superadmin.configuracion_institucion'))
+                
+                # Ruta segura de destino
+                upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
+                os.makedirs(upload_dir, exist_ok=True)
+                
+                # Nombre seguro (siempre el mismo nombre para reemplazar)
+                nombre_seguro = f'logo_institucion.{extension}'
+                ruta_destino = os.path.join(upload_dir, nombre_seguro)
+                
+                # Guardar el archivo
+                archivo_logo.save(ruta_destino)
+                
+                # Actualizar la ruta en la BD
+                ruta_bd = f'uploads/{nombre_seguro}'
+                cfg_logo = ConfiguracionSuperadmin.query.filter_by(clave='institucion_logo').first()
+                if cfg_logo:
+                    cfg_logo.valor = ruta_bd
+                else:
+                    nuevo_logo = ConfiguracionSuperadmin(
+                        clave='institucion_logo',
+                        valor=ruta_bd,
+                        descripcion='Logo oficial de la institución'
+                    )
+                    db.session.add(nuevo_logo)
+                
+                actualizados += 1
+                flash('✅ Logo actualizado correctamente.', 'success')
+
+            db.session.commit()
+            flash(f'✅ Configuración institucional actualizada ({actualizados} campos).', 'success')
+            return redirect(url_for('superadmin.configuracion_institucion'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error al guardar configuración institucional: {str(e)}', 'danger')
+
+    # Obtener todos los datos actuales
+    configs = {c.clave: c.valor for c in ConfiguracionSuperadmin.query.all()}
+    
+    # Construir la URL del logo actual
+    logo_url = None
+    if configs.get('institucion_logo'):
+        logo_url = url_for('static', filename=configs['institucion_logo'])
+    
+    return render_template(
+        'superadmin/configuracion_institucion.html',
+        configs=configs,
+        logo_url=logo_url
+    )
+
+

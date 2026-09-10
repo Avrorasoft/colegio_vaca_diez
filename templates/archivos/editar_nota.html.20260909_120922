@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">
+                <i class="bi bi-pencil-square"></i> Editar Nota
+            </h4>
+
+            <a href="{{ url_for('archivos.gestionar_notas', id=nota.egresado_id) }}"
+               class="btn btn-sm btn-light">
+                <i class="bi bi-arrow-left"></i> Volver
+            </a>
+        </div>
+
+        <div class="card-body">
+
+            <form method="POST">
+
+                <div class="row">
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">
+                            Gestión (Año) *
+                        </label>
+
+                        <select name="gestion" class="form-select" required>
+                            {% for a in anios %}
+                            <option value="{{ a }}"
+                                {% if nota.gestion == a %}selected{% endif %}>
+                                {{ a }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">
+                            Periodo *
+                        </label>
+
+                        <select name="periodo" class="form-select" required>
+                            {% for p in periodos %}
+                            <option value="{{ p }}"
+                                {% if nota.periodo == p %}selected{% endif %}>
+                                {{ p }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">
+                            Tipo de Evaluación *
+                        </label>
+
+                        <select name="tipo" class="form-select" required>
+                            <option value="Parcial 1"
+                                {% if nota.tipo == 'Parcial 1' %}selected{% endif %}>
+                                Parcial 1
+                            </option>
+
+                            <option value="Parcial 2"
+                                {% if nota.tipo == 'Parcial 2' %}selected{% endif %}>
+                                Parcial 2
+                            </option>
+
+                            <option value="Parcial 3"
+                                {% if nota.tipo == 'Parcial 3' %}selected{% endif %}>
+                                Parcial 3
+                            </option>
+
+                            <option value="Parcial 4"
+                                {% if nota.tipo == 'Parcial 4' %}selected{% endif %}>
+                                Parcial 4
+                            </option>
+
+                            <option value="Examen Final"
+                                {% if nota.tipo == 'Examen Final' %}selected{% endif %}>
+                                Examen Final
+                            </option>
+
+                            <option value="Trabajo Práctico"
+                                {% if nota.tipo == 'Trabajo Práctico' %}selected{% endif %}>
+                                Trabajo Práctico
+                            </option>
+
+                            <option value="Participación"
+                                {% if nota.tipo == 'Participación' %}selected{% endif %}>
+                                Participación
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">
+                            Nota (0-100) *
+                        </label>
+
+                        <input type="number"
+                               name="nota"
+                               class="form-control"
+                               value="{{ nota.nota }}"
+                               min="0"
+                               max="100"
+                               step="0.1"
+                               required>
+                    </div>
+
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">
+                            Materia *
+                        </label>
+
+                        <select name="materia" class="form-select" required>
+                            <optgroup label="Primaria">
+                                {% for m in materias_primaria %}
+                                <option value="{{ m }}"
+                                    {% if nota.materia == m %}selected{% endif %}>
+                                    {{ m }}
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+
+                            <optgroup label="Secundaria">
+                                {% for m in materias_secundaria %}
+                                <option value="{{ m }}"
+                                    {% if nota.materia == m %}selected{% endif %}>
+                                    {{ m }}
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+                        </select>
+                    </div>
+
+                </div>
+
+                <div class="d-flex justify-content-between mt-3">
+
+                    <a href="{{ url_for('archivos.gestionar_notas', id=nota.egresado_id) }}"
+                       class="btn btn-secondary">
+                        Cancelar
+                    </a>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Actualizar Nota
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}

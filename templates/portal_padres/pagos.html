@@ -1,0 +1,79 @@
+{% extends "base_padres.html" %}
+{% block title %}Estado de Pagos - Portal de Padres{% endblock %}
+{% block page_title %}Estado de Pagos{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0"><i class="bi bi-cash-stack text-primary me-2"></i>Estado de Pagos</h2>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6 mb-3">
+            <div class="card border-{{ 'danger' if monto_pendiente > 0 else 'success' }}">
+                <div class="card-body text-center">
+                    <h3 class="mb-0 text-{{ 'danger' if monto_pendiente > 0 else 'success' }}">{{ "Bs. %.2f"|format(monto_pendiente) }}</h3>
+                    <p class="mb-0">{{ "Pendiente de pago" if monto_pendiente > 0 else "Al día" }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <div class="card border-info">
+                <div class="card-body text-center">
+                    <h3 class="mb-0 text-info">{{ pagos|length }}</h3>
+                    <p class="mb-0">Total de pagos registrados</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-clock-history text-primary me-2"></i>Historial de Pagos</h5>
+        </div>
+        <div class="card-body">
+            {% if pagos %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Mes</th>
+                            <th>Año</th>
+                            <th>Monto Total</th>
+                            <th>Descuento</th>
+                            <th>Monto Pagado</th>
+                            <th>Fecha de Pago</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pagos %}
+                        <tr>
+                            <td>{{ p.mes }}</td>
+                            <td>{{ p.anio }}</td>
+                            <td>Bs. {{ "%.2f"|format(p.monto_total) }}</td>
+                            <td>Bs. {{ "%.2f"|format(p.descuento or 0) }}</td>
+                            <td>Bs. {{ "%.2f"|format(p.monto_pagado) }}</td>
+                            <td>{{ p.fecha_pago.strftime('%d/%m/%Y') if p.fecha_pago else '-' }}</td>
+                            <td>
+                                {% if p.estado == 'Pagado' %}
+                                    <span class="badge bg-success">{{ p.estado }}</span>
+                                {% else %}
+                                    <span class="badge bg-danger">{{ p.estado }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-cash text-muted" style="font-size: 4rem;"></i>
+                <p class="text-muted mt-3">No hay pagos registrados</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

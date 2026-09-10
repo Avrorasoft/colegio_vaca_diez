@@ -1,0 +1,11 @@
+.secret_key
+.credenciales_iniciales.txt
+*.db
+__pycache__/
+*.pyc
+.env
+venv/
+static/uploads/
+static/recibos/
+static/boletines/
+logs/

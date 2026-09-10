@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Registrar Falta - Colegio Dr. Antonio Vaca Díez{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card p-4" style="max-width: 600px; margin: auto;">
+        <h3 class="mb-4"><i class="bi bi-pencil-square"></i> Registrar Falta o Licencia</h3>
+        
+        <form method="POST" enctype="multipart/form-data">
+            
+            <!-- FILTRO POR CURSO -->
+            <div class="mb-3">
+                <label class="form-label">Curso</label>
+                <select name="curso_filtro" class="form-select" onchange="window.location.href='{{ url_for('faltas.nueva_falta') }}?curso=' + this.value">
+                    <option value="">Seleccione un curso...</option>
+                    {% for c in cursos %}
+                    <option value="{{ c }}" {% if curso_actual == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- ESTUDIANTE -->
+            <div class="mb-3">
+                <label class="form-label">Estudiante *</label>
+                <select name="estudiante_id" class="form-select" required>
+                    <option value="">Seleccione un estudiante...</option>
+                    {% for est in estudiantes %}
+                    <option value="{{ est.id }}">{{ est.apellidos }}, {{ est.nombres }} ({{ est.curso }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- FECHA -->
+            <div class="mb-3">
+                <label class="form-label">Fecha *</label>
+                <input type="date" name="fecha" class="form-control" required value="{{ today }}">
+            </div>
+            
+            <!-- TIPO DE FALTA -->
+            <div class="mb-3">
+                <label class="form-label">Tipo de Registro *</label>
+                <select name="tipo_falta" class="form-select" required>
+                    <option value="Injustificada">Falta Injustificada</option>
+                    <option value="Justificada">Falta Justificada</option>
+                    <option value="Licencia Médica">Licencia Médica</option>
+                    <option value="Permiso">Permiso Especial</option>
+                </select>
+            </div>
+            
+            <!-- OBSERVACIONES -->
+            <div class="mb-3">
+                <label class="form-label">Observaciones</label>
+                <textarea name="observaciones" class="form-control" rows="3" 
+                          placeholder="Motivo de la falta o licencia..."></textarea>
+            </div>
+            
+            <!-- ARCHIVO ADJUNTO -->
+            <div class="mb-3">
+                <label class="form-label">Adjuntar Comprobante (Opcional)</label>
+                <input type="file" name="archivo" class="form-control" accept=".pdf,.jpg,.png">
+            </div>
+            
+            <!-- BOTONES -->
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Guardar Registro
+                </button>
+                <a href="{{ url_for('faltas.lista_faltas') }}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

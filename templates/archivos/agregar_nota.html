@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4"><i class="bi bi-plus-circle"></i> Agregar Nota - {{ egresado.apellidos }}, {{ egresado.nombres }}</h3>
+    <div class="card">
+        <div class="card-body">
+            <form method="POST">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label fw-bold">Gestión (Año) *</label>
+                        <select name="gestion" class="form-select" required>
+                            {% for a in anios %}
+                            <option value="{{ a }}">{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label fw-bold">Periodo *</label>
+                        <select name="periodo" class="form-select" required>
+                            {% for p in periodos %}
+                            <option value="{{ p }}">{{ p }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label fw-bold">Tipo de Evaluación *</label>
+                        <select name="tipo" class="form-select" required>
+                            <option value="Parcial 1">Parcial 1</option>
+                            <option value="Parcial 2">Parcial 2</option>
+                            <option value="Parcial 3">Parcial 3</option>
+                            <option value="Parcial 4">Parcial 4</option>
+                            <option value="Examen Final">Examen Final</option>
+                            <option value="Trabajo Práctico">Trabajo Práctico</option>
+                            <option value="Participación">Participación</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label fw-bold">Nota (0-100) *</label>
+                        <input type="number" name="nota" class="form-control" min="0" max="100" step="1" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Materia *</label>
+                    <select name="materia" class="form-select" required>
+                        <optgroup label=" Materias de Primaria">
+                            {% for m in materias_primaria %}
+                            <option value="{{ m }}">{{ m }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label=" Materias de Secundaria">
+                            {% for m in materias_secundaria %}
+                            <option value="{{ m }}">{{ m }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success btn-lg">
+                    <i class="bi bi-save"></i> Guardar Nota
+                </button>
+                <a href="{{ url_for('archivos.gestionar_notas', id=egresado.id) }}" class="btn btn-secondary btn-lg">Cancelar</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

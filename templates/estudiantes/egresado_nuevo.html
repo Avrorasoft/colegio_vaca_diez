@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Registro de Nuevo Egresado - Cárdex Académico{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width: 1020px;">
+    <!-- ENCABEZADO SUPERIOR COMPACTO -->
+    <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0 text-dark" style="font-size: 18px;">🎓 Registro de Cárdex de Egresado</h4>
+            <small class="text-muted" style="font-size: 11px;">Colegio Dr. Antonio Vaca Díez | Apertura de Historial de Calificaciones (3º a 6º)</small>
+        </div>
+        <a href="{{ url_for('estudiantes.lista_egresados') }}" class="btn btn-outline-secondary btn-sm py-1 px-3" style="font-size: 12px;">
+            <i class="bi bi-arrow-left"></i> Volver a la Lista
+        </a>
+    </div>
+
+    <form method="POST" action="{{ url_for('estudiantes.nuevo_egresado') }}">
+        <!-- 1. IDENTIFICACIÓN PERSONAL -->
+        <div class="card shadow-sm border-0 mb-3" style="border-radius: 6px;">
+            <div class="card-header bg-dark text-white fw-bold py-1 px-3" style="font-size: 12px;">
+                1. Datos de Identificación Personal (Base del Cárdex)
+            </div>
+            <div class="card-body p-3">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Cédula de Identidad (C.I.) *</label>
+                        <input type="text" id="input_ci" name="ci" class="form-control form-control-sm fw-bold" placeholder="Ej. 6859403" oninput="sincronizarControlEstudiante()" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Expedido</label>
+                        <select id="input_exp" name="expedido" class="form-select form-select-sm" onchange="sincronizarControlEstudiante()">
+                            <option value="BN" selected>BN (Beni)</option>
+                            <option value="PD">PD (Pando)</option>
+                            <option value="LP">LP (La Paz)</option>
+                            <option value="SC">SC (Santa Cruz)</option>
+                            <option value="CB">CB (Cochabamba)</option>
+                            <option value="CH">CH (Chuquisaca)</option>
+                            <option value="OR">OR (Oruro)</option>
+                            <option value="PT">PT (Potosí)</option>
+                            <option value="TJ">TJ (Tarija)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Código RUDE *</label>
+                        <input type="text" id="input_rude" name="rude" class="form-control form-control-sm" placeholder="Código RUDE" oninput="sincronizarControlEstudiante()" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Fecha de Nacimiento</label>
+                        <input type="date" name="fecha_nacimiento" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Apellidos Completos *</label>
+                        <input type="text" id="input_apellidos" name="apellidos" class="form-control form-control-sm text-uppercase fw-bold" placeholder="Apellidos" oninput="sincronizarControlEstudiante()" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Nombres Completos *</label>
+                        <input type="text" id="input_nombres" name="nombres" class="form-control form-control-sm text-uppercase fw-bold" placeholder="Nombres" oninput="sincronizarControlEstudiante()" required>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Turno Cursado *</label>
+                        <select id="input_turno" name="turno_egreso" class="form-select form-select-sm fw-bold" onchange="sincronizarControlEstudiante()">
+                            <option value="Mañana" selected>🌅 Turno Mañana</option>
+                            <option value="Tarde">🌇 Turno Tarde</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Gestión / Año de Egreso *</label>
+                        <input type="number" id="input_anio" name="anio_egreso" class="form-control form-control-sm fw-bold text-primary" value="2026" oninput="sincronizarControlEstudiante()" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">N° Diploma de Bachiller</label>
+                        <input type="text" name="nro_diploma" class="form-control form-control-sm" placeholder="N° de Registro">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Libro y Folio</label>
+                        <input type="text" name="libro_registro" class="form-control form-control-sm" placeholder="Libro / Folio">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. MATRIZ DE CALIFICACIONES COMPACTA -->
+        <div class="card shadow-sm border-0 mb-3" style="border-radius: 6px;">
+            <div class="card-header text-white fw-bold py-1 px-3 d-flex justify-content-between align-items-center" style="background-color: #0f172a; font-size: 12px;">
+                <span>2. Historial de Calificaciones (3º, 4º, 5º y 6º de Secundaria)</span>
+                <span class="badge bg-primary" style="font-size: 10px;">Escala: 1 a 100 pts.</span>
+            </div>
+            <div class="card-body p-3">
+                <ul class="nav nav-pills mb-2 nav-fill" id="pills-tab" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active fw-bold py-1 px-2" id="tab-3ro" data-bs-toggle="pill" data-bs-target="#curso-3ro" type="button" style="font-size: 12px;">
+                            📘 3º de Secundaria
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold py-1 px-2" id="tab-4to" data-bs-toggle="pill" data-bs-target="#curso-4to" type="button" style="font-size: 12px;">
+                            📙 4º de Secundaria
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold py-1 px-2" id="tab-5to" data-bs-toggle="pill" data-bs-target="#curso-5to" type="button" style="font-size: 12px;">
+                            📗 5º de Secundaria
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold py-1 px-2" id="tab-6to" data-bs-toggle="pill" data-bs-target="#curso-6to" type="button" style="font-size: 12px;">
+                            🎓 6º de Secundaria
+                        </button>
+                    </li>
+                </ul>
+
+                {% set materias = [
+                    ('comunicacion', 'Comunicación y Lenguajes (Castellana)', 'Comunidad y Sociedad'),
+                    ('extranjera', 'Lengua Extranjera (Inglés)', 'Comunidad y Sociedad'),
+                    ('sociales', 'Ciencias Sociales (Historia/Cívica)', 'Comunidad y Sociedad'),
+                    ('educacion_fisica', 'Educación Física y Deportes', 'Comunidad y Sociedad'),
+                    ('educacion_musical', 'Educación Musical', 'Comunidad y Sociedad'),
+                    ('artes_plasticas', 'Artes Plásticas y Visuales', 'Comunidad y Sociedad'),
+                    ('matematica', 'Matemática', 'Ciencia, Tecnología y Producción'),
+                    ('tecnica', 'Técnica Tecnológica General / Especializada', 'Ciencia, Tecnología y Producción'),
+                    ('biologia', 'Biología - Geografía', 'Vida, Tierra y Territorio'),
+                    ('fisica', 'Física', 'Vida, Tierra y Territorio'),
+                    ('quimica', 'Química', 'Vida, Tierra y Territorio'),
+                    ('filosofia', 'Cosmovisiones, Filosofía y Psicología', 'Cosmos y Pensamiento'),
+                    ('valores', 'Valores, Espiritualidades y Religiones', 'Cosmos y Pensamiento')
+                ] %}
+
+                <div class="tab-content border rounded p-2 bg-light" id="pills-tabContent">
+                    {% for curso_key, curso_label in [('3ro', '3º de Secundaria'), ('4to', '4º de Secundaria'), ('5to', '5º de Secundaria'), ('6to', '6º de Secundaria')] %}
+                    <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="curso-{{ curso_key }}" role="tabpanel">
+                        
+                        <!-- BANNER COMPACTO DE CONTROL -->
+                        <div class="border rounded mb-2 bg-white px-3 py-1 d-flex justify-content-between align-items-center" style="font-size: 11px; border-left: 4px solid #0284c7 !important;">
+                            <div>
+                                <span class="badge bg-primary me-2">{{ curso_label }}</span>
+                                <strong class="text-dark ctrl-nombre">ESTUDIANTE NO DEFINIDO</strong>
+                                <span class="text-muted ms-2">| C.I.: <span class="ctrl-ci">---</span></span>
+                                <span class="text-muted ms-2">| Gestión: <strong class="text-primary ctrl-gestion-{{ curso_key }}">---</strong></span>
+                                <span class="text-muted ms-2">| Turno: <span class="ctrl-turno">Mañana</span></span>
+                            </div>
+                            <div>
+                                <span class="badge bg-dark" id="promedio-badge-{{ curso_key }}" style="font-size: 11px;">0.00</span>
+                            </div>
+                        </div>
+
+                        <!-- TABLA COMPACTA CON CASILLAS DE NOTA ACOTADAS -->
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered table-hover align-middle bg-white mb-0" style="font-size: 11px;">
+                                <thead class="table-secondary" style="font-size: 11px;">
+                                    <tr>
+                                        <th style="width: 40px;" class="text-center">#</th>
+                                        <th style="width: 220px;">Campo / Área de Formación</th>
+                                        <th>Asignatura Oficial</th>
+                                        <th style="width: 120px;" class="text-center">Nota Anual (/100)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for mat_key, mat_nombre, mat_area in materias %}
+                                    <tr>
+                                        <td class="text-center text-muted py-1">{{ loop.index }}</td>
+                                        <td class="py-1 text-muted">{{ mat_area }}</td>
+                                        <td class="py-1 fw-semibold text-dark">{{ mat_nombre }}</td>
+                                        <td class="text-center py-1">
+                                            <input type="number" 
+                                                   name="nota_{{ curso_key }}_{{ mat_key }}" 
+                                                   class="form-control form-control-sm text-center fw-bold input-nota input-{{ curso_key }}" 
+                                                   min="0" max="100" placeholder="0" 
+                                                   style="max-width: 75px; margin: 0 auto; padding: 2px 5px; font-size: 12px;"
+                                                   data-curso="{{ curso_key }}"
+                                                   oninput="recalcularPromedios()">
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- RESUMEN DE PROMEDIOS -->
+                <div class="row g-2 mt-2" style="font-size: 11px;">
+                    <div class="col-md-2">
+                        <div class="p-2 border rounded bg-white text-center">
+                            <span class="text-muted d-block" style="font-size: 10px; font-weight: 600;">Prom. 3º Sec.</span>
+                            <strong class="text-dark" id="txt-prom-3ro" style="font-size: 13px;">0.00</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-2 border rounded bg-white text-center">
+                            <span class="text-muted d-block" style="font-size: 10px; font-weight: 600;">Prom. 4º Sec.</span>
+                            <strong class="text-dark" id="txt-prom-4to" style="font-size: 13px;">0.00</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-2 border rounded bg-white text-center">
+                            <span class="text-muted d-block" style="font-size: 10px; font-weight: 600;">Prom. 5º Sec.</span>
+                            <strong class="text-dark" id="txt-prom-5to" style="font-size: 13px;">0.00</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-2 border rounded bg-white text-center">
+                            <span class="text-muted d-block" style="font-size: 10px; font-weight: 600;">Prom. 6º Sec.</span>
+                            <strong class="text-dark" id="txt-prom-6to" style="font-size: 13px;">0.00</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-2 border rounded bg-dark text-white text-center">
+                            <span class="text-white-50 d-block" style="font-size: 10px; font-weight: 600; text-transform: uppercase;">Promedio General de Egreso</span>
+                            <strong class="text-warning" id="txt-prom-general" style="font-size: 15px;">0.00 pts</strong>
+                            <input type="hidden" name="promedio_general" id="input-promedio-general" value="0.00">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. TUTOR Y BOTÓN FINAL -->
+        <div class="card shadow-sm border-0 mb-3" style="border-radius: 6px;">
+            <div class="card-header bg-secondary text-white fw-bold py-1 px-3" style="font-size: 12px;">
+                3. Datos de Referencia Familiar y Observaciones
+            </div>
+            <div class="card-body p-3" style="font-size: 12px;">
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Nombre del Tutor</label>
+                        <input type="text" name="nombre_tutor" class="form-control form-control-sm text-uppercase" placeholder="Nombre completo">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">C.I. Tutor</label>
+                        <input type="text" name="ci_tutor" class="form-control form-control-sm" placeholder="N° Cédula">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Teléfono</label>
+                        <input type="text" name="telefono_tutor" class="form-control form-control-sm" placeholder="Contacto">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label mb-1" style="font-size: 10px; font-weight: 600;">Observaciones</label>
+                        <textarea name="observaciones" class="form-control form-control-sm" rows="2" placeholder="Observaciones de archivo..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mb-4">
+            <a href="{{ url_for('estudiantes.lista_egresados') }}" class="btn btn-secondary btn-sm px-3">Cancelar</a>
+            <button type="submit" class="btn btn-primary btn-sm px-4 fw-bold">
+                💾 Guardar Cárdex Completo
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+function sincronizarControlEstudiante() {
+    const ape = document.getElementById('input_apellidos').value.trim();
+    const nom = document.getElementById('input_nombres').value.trim();
+    const ci = document.getElementById('input_ci').value.trim();
+    const exp = document.getElementById('input_exp').value;
+    const turno = document.getElementById('input_turno').value;
+    const anio = parseInt(document.getElementById('input_anio').value) || 2026;
+
+    const nombreCompleto = (ape || nom) ? (ape + ', ' + nom).toUpperCase() : 'ESTUDIANTE NO DEFINIDO';
+    const docIdentidad = ci ? (ci + ' ' + exp) : '---';
+
+    document.querySelectorAll('.ctrl-nombre').forEach(el => el.innerText = nombreCompleto);
+    document.querySelectorAll('.ctrl-ci').forEach(el => el.innerText = docIdentidad);
+    document.querySelectorAll('.ctrl-turno').forEach(el => el.innerText = turno);
+
+    const el3 = document.querySelector('.ctrl-gestion-3ro'); if (el3) el3.innerText = (anio - 3);
+    const el4 = document.querySelector('.ctrl-gestion-4to'); if (el4) el4.innerText = (anio - 2);
+    const el5 = document.querySelector('.ctrl-gestion-5to'); if (el5) el5.innerText = (anio - 1);
+    const el6 = document.querySelector('.ctrl-gestion-6to'); if (el6) el6.innerText = anio;
+}
+
+function recalcularPromedios() {
+    const cursos = ['3ro', '4to', '5to', '6to'];
+    let sumaCursos = 0;
+    let cursosConNotas = 0;
+
+    cursos.forEach(curso => {
+        const inputs = document.querySelectorAll('.input-' + curso);
+        let suma = 0;
+        let count = 0;
+        inputs.forEach(inp => {
+            const val = parseFloat(inp.value);
+            if (!isNaN(val) && val > 0) {
+                suma += val;
+                count++;
+            }
+        });
+
+        const promCurso = count > 0 ? (suma / count) : 0;
+        const promTexto = promCurso.toFixed(2);
+        
+        const badge = document.getElementById('promedio-badge-' + curso);
+        if (badge) badge.innerText = promTexto;
+        
+        const txt = document.getElementById('txt-prom-' + curso);
+        if (txt) txt.innerText = promTexto;
+
+        if (count > 0) {
+            sumaCursos += promCurso;
+            cursosConNotas++;
+        }
+    });
+
+    const promGeneral = cursosConNotas > 0 ? (sumaCursos / cursosConNotas) : 0;
+    const promGenTexto = promGeneral.toFixed(2);
+    
+    document.getElementById('txt-prom-general').innerText = promGenTexto + ' pts';
+    document.getElementById('input-promedio-general').value = promGenTexto;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    sincronizarControlEstudiante();
+});
+</script>
+{% endblock %}

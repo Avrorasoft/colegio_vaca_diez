@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">💰 Registrar Pago</h4>
+                </div>
+                <div class="card-body">
+                    
+                    <div class="alert alert-info">
+                        <h5>📋 Datos del Estudiante</h5>
+                        <p><strong>Estudiante:</strong> {{ est.apellidos }}, {{ est.nombres }}</p>
+                        <p><strong>C.I.:</strong> {{ est.ci }}</p>
+                        <p><strong>RUDE:</strong> {{ est.rude if est.rude else 'No registrado' }}</p>
+                        <p><strong>Curso:</strong> {{ est.curso }}</p>
+                        <p><strong>Pensión:</strong> Bs. {{ "%.2f"|format(est.pension or 0) }}</p>
+                    </div>
+
+                    <form method="POST" action="{{ url_for('estudiantes.pagar_estudiante', id=est.id) }}">
+                        
+                        <!-- TIPO DE PAGO -->
+                        <div class="form-group mb-3">
+                            <label for="tipo_pago">Tipo de Pago <span class="text-danger">*</span></label>
+                            <select class="form-control" id="tipo_pago" name="tipo_pago" required>
+                                <option value="">Seleccione el tipo de pago</option>
+                                <option value="Pensión">📚 Pensión</option>
+                                <option value="Matrícula">📋 Matrícula</option>
+                                <option value="Inscripción">📝 Inscripción</option>
+                                <option value="Cuota">💰 Cuota</option>
+                                <option value="Solidario">🤝 Aporte Solidario</option>
+                                <option value="Multa">⚠️ Multa</option>
+                                <option value="Otros">📌 Otros</option>
+                            </select>
+                            <small class="text-muted">Selecciona el concepto del pago</small>
+                        </div>
+
+                        <!-- DESCRIPCIÓN -->
+                        <div class="form-group mb-3">
+                            <label for="descripcion">Descripción (opcional)</label>
+                            <input type="text" class="form-control" id="descripcion" name="descripcion" 
+                                   placeholder="Ej: Pago de pensión septiembre, Inscripción 2026, Aporte solidario, etc.">
+                            <small class="text-muted">Describe brevemente el concepto del pago</small>
+                        </div>
+
+                        <!-- MESES PENDIENTES (SOLO PARA PENSIÓN) -->
+                        <div class="form-group mb-3" id="meses_container">
+                            <label>Seleccionar Mes(es) a Pagar <span id="meses_obligatorio" style="display:none; color:red;">*</span></label>
+                            <div id="meses_checkboxes">
+                                {% if meses_pendientes %}
+                                    {% for mes in meses_pendientes %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="meses_a_pagar" value="{{ mes }}" id="mes_{{ loop.index }}">
+                                        <label class="form-check-label" for="mes_{{ loop.index }}">
+                                            {{ mes }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <p class="text-warning">⚠️ No hay meses pendientes para este estudiante</p>
+                                {% endif %}
+                            </div>
+                            <small id="meses_ayuda" class="text-muted">Selecciona los meses que estás pagando (solo para Pensión)</small>
+                        </div>
+
+                        <!-- MONTO PAGADO -->
+                        <div class="form-group mb-3">
+                            <label for="monto_pagado">Monto a Pagar (Bs.) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="monto_pagado" name="monto_pagado" 
+                                   step="0.01" min="0.01" placeholder="0.00" required>
+                            <small class="text-muted">Ingresa el monto que se está pagando en este momento</small>
+                        </div>
+
+                        <!-- Descuento -->
+                        <div class="form-group mb-3">
+                            <label for="descuento">Descuento (Bs.)</label>
+                            <input type="number" class="form-control" id="descuento" name="descuento" 
+                                   step="0.01" min="0" placeholder="0.00" value="0">
+                        </div>
+
+                        <!-- Método de Pago -->
+                        <div class="form-group mb-3">
+                            <label for="metodo_pago">Método de Pago <span class="text-danger">*</span></label>
+                            <select class="form-control" id="metodo_pago" name="metodo_pago" required>
+                                <option value="Efectivo">💵 Efectivo</option>
+                                <option value="Bancario">🏦 Bancario</option>
+                                <option value="Transferencia">🏛️ Transferencia</option>
+                            </select>
+                        </div>
+
+                        <!-- Año -->
+                        <div class="form-group mb-3">
+                            <label for="anio">Año</label>
+                            <select class="form-control" id="anio" name="anio">
+                                {% for anio in ['2020','2021','2022','2023','2024','2025','2026','2027'] %}
+                                <option value="{{ anio }}" {% if anio == anio|string %}selected{% endif %}>{{ anio }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('estudiantes.ver_estudiante', id=est.id) }}" class="btn btn-secondary me-md-2">Cancelar</a>
+                            <button type="submit" class="btn btn-success btn-lg">
+                                💾 Registrar Pago
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tipoPago = document.getElementById('tipo_pago');
+    const mesesContainer = document.getElementById('meses_container');
+    const mesesCheckboxes = document.querySelectorAll('input[name="meses_a_pagar"]');
+    const mesesObligatorio = document.getElementById('meses_obligatorio');
+    const mesesAyuda = document.getElementById('meses_ayuda');
+
+    function actualizarMeses() {
+        if (tipoPago.value === 'Pensión') {
+            // Pensión: meses son obligatorios
+            mesesObligatorio.style.display = 'inline';
+            mesesAyuda.textContent = 'Selecciona los meses que estás pagando (OBLIGATORIO para Pensión)';
+            mesesAyuda.style.color = 'red';
+            mesesCheckboxes.forEach(cb => {
+                cb.required = true;
+            });
+        } else {
+            // Otros pagos: meses son opcionales
+            mesesObligatorio.style.display = 'none';
+            mesesAyuda.textContent = 'Los meses son opcionales para este tipo de pago';
+            mesesAyuda.style.color = '#6c757d';
+            mesesCheckboxes.forEach(cb => {
+                cb.required = false;
+            });
+        }
+    }
+
+    tipoPago.addEventListener('change', actualizarMeses);
+    actualizarMeses();
+});
+</script>
+{% endblock %}
+{% endblock %}
