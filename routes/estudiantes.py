@@ -1,3 +1,4 @@
+from decorators import profesor_autorizado_requerido
 # -*- coding: utf-8 -*-
 """
 ==============================================================================
