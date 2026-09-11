@@ -320,6 +320,70 @@ function previewLogo(input) {
 </script>
 
 </div></div>
+
+    <!-- ZONA DE PELIGRO: RESTABLECIMIENTO DE FÁBRICA -->
+    <div class="card border-danger shadow-sm mt-5 mb-4">
+        <div class="card-header bg-danger text-white py-3">
+            <h5 class="card-title mb-0 fw-bold">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>Zona de Peligro: Restablecimiento del Sistema
+            </h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h6 class="fw-bold text-danger mb-1">Volver a Valores de Fábrica (Puesta a Cero)</h6>
+                    <p class="text-muted small mb-0">
+                        Esta acción vaciará por completo todos los registros de alumnos, notas, pagos, asistencias y finanzas. 
+                        Las contraseñas de Superadmin y PWA volverán a su valor inicial de fábrica (<strong>ADMIN2026</strong>).
+                        Esta operación es irreversible y está diseñada para iniciar una nueva gestión escolar desde cero.
+                    </p>
+                </div>
+                <div class="col-lg-4 text-lg-end mt-3 mt-lg-0">
+                    <button type="button" class="btn btn-outline-danger px-4 py-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalRestablecerFabrica">
+                        <i class="bi bi-trash3-fill me-2"></i>Restablecer de Fábrica
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIRMACIÓN SEGURA -->
+    <div class="modal fade" id="modalRestablecerFabrica" tabindex="-1" aria-labelledby="modalRestablecerLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-danger">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title fw-bold" id="modalRestablecerLabel">
+                        <i class="bi bi-shield-exclamation me-2"></i>Confirmación de Restablecimiento
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <form action="{{ url_for('superadmin.reset_fabrica') }}" method="POST">
+                    <div class="modal-body p-4">
+                        <p class="text-dark fw-semibold mb-2">¿Está absolutamente seguro de proceder?</p>
+                        <ul class="text-secondary small mb-3">
+                            <li>Se eliminarán todos los estudiantes inscritos.</li>
+                            <li>Se borrarán todas las notas e historiales pedagógicos.</li>
+                            <li>Se purgará la totalidad de pagos, recibos y movimientos económicos.</li>
+                            <li>La contraseña volverá al valor de fábrica: <code>ADMIN2026</code>.</li>
+                        </ul>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-dark">
+                                Para confirmar, escriba <span class="text-danger">REINICIAR-TODO</span> a continuación:
+                            </label>
+                            <input type="text" name="confirmacion" class="form-control text-center font-monospace fw-bold border-danger" required placeholder="REINICIAR-TODO" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger fw-bold">
+                            <i class="bi bi-radioactive me-1"></i> Borrar Todo y Restablecer
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 {% endblock %}
 
 

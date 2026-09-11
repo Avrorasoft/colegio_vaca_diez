@@ -506,9 +506,7 @@ Cardex - {{ est.apellidos }}, {{ est.nombres }} - Colegio Dr. Antonio Vaca Díez
                                         {% for n in item['notas'] %}
                                     {% if n.valoracion_cualitativa %}
                                         <div class="p-2 mb-2 bg-light border-start border-4 border-success rounded">
-                                            <div class="fw-bold text-dark small">{{ n.tipo }} <a href="{{ url_for('estudiantes.imprimir_calificaciones_detalle', id=est.id) }}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
-    <i class="fas fa-print me-1"></i> Imprimir Calificaciones Oficiales
-</a></div>
+                                            <div class="fw-bold text-dark small">{{ n.tipo }}</div>
                                             <span class="badge bg-success text-white px-2 py-1 mt-1">{{ n.valoracion_cualitativa }}</span>
                                         </div>
                                     {% elif n.informe_descriptivo %}
@@ -533,13 +531,17 @@ Cardex - {{ est.apellidos }}, {{ est.nombres }} - Colegio Dr. Antonio Vaca Díez
                                         </div>{% endif %}
                                 {% endfor %}
                                     </div>
-                                    <a href="{{ url_for('estudiantes.imprimir_calificaciones_detalle', id=est.id) }}" 
+                                </div>
+                                {% if 'nidito' not in est.curso|lower and 'inicial' not in est.curso|lower and 'kinder' not in est.curso|lower %}
+                                <div class="ms-auto ps-3 text-end">
+                                    <a href="{{ url_for('estudiantes.imprimir_materia_individual', id=est.id, materia_nombre=item['nombre']) }}" 
                                        target="_blank" 
-                                       class="text-secondary text-decoration-none ms-3" 
-                                       title="Imprimir Calificaciones">
-                                        <i class="bi bi-printer-fill fs-5 text-primary"></i>
+                                       class="btn btn-sm btn-outline-secondary border-0 text-primary" 
+                                       title="Imprimir materia">
+                                        <i class="bi bi-printer fs-5"></i>
                                     </a>
                                 </div>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}

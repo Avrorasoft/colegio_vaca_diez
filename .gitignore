@@ -11,3 +11,5 @@ static/boletines/
 logs/
 instance/*.db-shm
 instance/*.db-wal
+
+*.avr

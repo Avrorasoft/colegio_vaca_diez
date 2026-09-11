@@ -1751,3 +1751,33 @@ def ver_cardex_egresado(id):
 
 
 
+
+@estudiantes_bp.route('/estudiantes/<int:id>/imprimir_materia/<path:materia_nombre>')
+def imprimir_materia_individual(id, materia_nombre):
+    from urllib.parse import unquote
+    materia_nombre = unquote(materia_nombre).strip()
+    est = Estudiante.query.get_or_404(id)
+    curso_txt = str(getattr(est, 'curso', '')).lower()
+    es_nidito = any(k in curso_txt for k in ['nidito', 'inicial', 'kinder', 'kínder', 'pre-kinder', 'prekinder'])
+
+    calificaciones_raw = Calificacion.query.filter(
+        or_(Calificacion.estudiante_id == id, Calificacion.ci_estudiante == est.ci)
+    ).options(joinedload(Calificacion.materia)).all()
+
+    califs_materia = [c for c in calificaciones_raw if c.materia and c.materia.nombre.strip().lower() == materia_nombre.lower()]
+
+    if es_nidito:
+        from utils.boletin_nidito_generator import generar_boletin_nidito_pdf
+        pdf_bytes = generar_boletin_nidito_pdf(est, calificaciones=calificaciones_raw, materia_especifica=materia_nombre)
+        fname = f"Seguimiento_{materia_nombre}_{est.ci}.pdf"
+    else:
+        from utils.reporte_calificaciones_generator import generar_detalle_calificaciones_pdf
+        pdf_bytes = generar_detalle_calificaciones_pdf(est, califs_materia if califs_materia else calificaciones_raw)
+        fname = f"Calificaciones_{materia_nombre}_{est.ci}.pdf"
+
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=fname
+    )

@@ -27,16 +27,19 @@ rubricas_bp = Blueprint(
 
 
 def admin_requerido(f):
-  @wraps(f)
-  def decorated_function(*args, **kwargs):
-    rol = session.get('rol')
-    es_super = session.get('es_superadmin')
-    if rol not in ['admin', 'superadmin'] and not es_super:
-      flash('❌ Acceso denegado: Se requieren privilegios de Superadmin para gestionar rúbricas.', 'danger')
-      return redirect('/')
-    return f(*args, **kwargs)
-  return decorated_function
-
+   @wraps(f)
+   def decorated_function(*args, **kwargs):
+     # Obtener rol o indicadores de sesión normalizados
+     rol = str(session.get('rol') or session.get('role') or session.get('tipo') or '').lower().strip()
+     es_super = bool(session.get('es_superadmin') or session.get('is_superadmin') or session.get('is_admin') or session.get('admin'))
+     
+     # Permitir si coincide con admin/superadmin o si el flag booleano está activo
+     roles_permitidos = ['admin', 'superadmin', 'director', 'direccion', 'administrador']
+     if rol not in roles_permitidos and not es_super and not any(r in rol for r in ['admin', 'super']):
+       flash('❌ Acceso denegado: Se requieren privilegios de Superadmin para gestionar rúbricas.', 'danger')
+       return redirect('/')
+     return f(*args, **kwargs)
+   return decorated_function
 
 @rubricas_bp.route('/')
 @admin_requerido
