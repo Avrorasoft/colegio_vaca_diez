@@ -95,7 +95,9 @@ def generar_boletin_nidito_pdf(estudiante, calificaciones=None, materias=None, c
     materias_map = {}
     for c in calificaciones:
         m_obj = getattr(c, "materia", None)
-        m_nom = str(getattr(m_obj, "nombre", None) or getattr(c, "materia_nombre", "") or (c.get("materia_nombre") if isinstance(c, dict) else "")).strip()
+        # En Nidito, el área viene en 'tipo' o en materia.nombre
+        tipo_area = getattr(c, "tipo", None) or (c.get("tipo") if isinstance(c, dict) else None)
+        m_nom = str(tipo_area or getattr(m_obj, "nombre", None) or getattr(c, "materia_nombre", "") or "").strip()
         if not m_nom or m_nom.lower() in ["materia eliminada", "none"]:
             continue
 
@@ -111,10 +113,10 @@ def generar_boletin_nidito_pdf(estudiante, calificaciones=None, materias=None, c
             materias_map[m_nom] = {1: "—", 2: "—", 3: "—"}
         materias_map[m_nom][t_num] = detalle_final
 
-    # Si no tiene materias cargadas en BD, colocar las áreas curriculares base
+    # Si el estudiante no tiene calificaciones registradas, mostrar estructura en blanco
     if not materias_map:
         for default_m in ["Desarrollo Psicomotriz", "Lenguaje y Expresión", "Autonomía y Convivencia", "Pensamiento y Creatividad"]:
-            materias_map[default_m] = {1: "Logrado", 2: "En Proceso", 3: "—"}
+            materias_map[default_m] = {1: "—", 2: "—", 3: "—"}
 
     styles = getSampleStyleSheet()
     th_title = ParagraphStyle("THTitle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=HexColor("#FFFFFF"))

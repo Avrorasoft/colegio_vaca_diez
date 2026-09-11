@@ -208,12 +208,7 @@ def ver_estudiante(id):
   pagos = Pago.query.filter_by(estudiante_id=id).order_by(Pago.fecha_pago.desc()).all()
 
   # ⭐ Búsqueda dual robusta por ID y por C.I.
-  calificaciones_raw = Calificacion.query.filter(
-    or_(
-      Calificacion.estudiante_id == id,
-      Calificacion.ci_estudiante == est.ci
-    )
-  ).options(joinedload(Calificacion.materia)).all()
+  calificaciones_raw = Calificacion.query.filter(Calificacion.estudiante_id == id).options(joinedload(Calificacion.materia)).all()
 
   materias_dict = {}
 
@@ -459,7 +454,7 @@ def archivar_como_egresado(id):
   calificaciones = Calificacion.query.filter(
     or_(
       Calificacion.estudiante_id == id,
-      Calificacion.ci_estudiante == est.ci
+      Calificacion.estudiante_id == id
     )
   ).all()
 
@@ -951,6 +946,34 @@ def enviar_recibo_chat(id):
 
 @estudiantes_bp.route('/ver_boletin/<int:id>')
 def ver_boletin(id):
+    from models import Estudiante, Calificacion, Materia
+    est = Estudiante.query.get_or_404(id)
+    curso_txt = str(getattr(est, 'curso', '')).lower()
+    es_nidito = any(k in curso_txt for k in ['nidito', 'inicial', 'kinder', 'kínder', 'pre-kinder', 'prekinder'])
+
+    boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
+    os.makedirs(boletines_dir, exist_ok=True)
+    filename = f"boletin_{est.id}_{est.ci}.pdf"
+    filepath = os.path.join(boletines_dir, filename)
+
+    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id).all()
+
+    if es_nidito:
+        from utils.boletin_nidito_generator import generar_boletin_nidito_pdf
+        bytes_pdf = generar_boletin_nidito_pdf(est, calificaciones=calificaciones)
+    else:
+        from utils.boletin_generator import generar_boletin_pdf
+        materias = Materia.query.all()
+        url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}"
+        bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
+
+    with open(filepath, 'wb') as f:
+        f.write(bytes_pdf)
+
+    boletin_url = f"/static/boletines/{filename}"
+    return render_template('estudiantes/ver_boletin.html', est=est, boletin_filename=filename, boletin_url=boletin_url)
+
+def _reemplazado_ver_boletin_viejo(id):
     from models import Estudiante, Calificacion, Materia, Padre
     from utils.boletin_generator import generar_boletin_pdf
     from datetime import datetime
@@ -968,7 +991,7 @@ def ver_boletin(id):
     
     # Generar o actualizar siempre el PDF moderno con los datos actuales de la BD relacional
     try:
-        calificaciones = Calificacion.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
+        calificaciones = Calificacion.query.filter_by(estudiante_id=est.id).all()
         materias = Materia.query.all()
         
         # URL de verificación simulada o local para el QR del boletín moderno
@@ -992,65 +1015,68 @@ def ver_boletin(id):
     )
 @estudiantes_bp.route('/generar_boletin/<int:id>')
 def generar_boletin(id):
-    try:
+    from models import Estudiante, Calificacion, Materia, Padre
+    from datetime import datetime
+    import os, time
+
+    est = Estudiante.query.get_or_404(id)
+    padre = Padre.query.filter_by(estudiante_id=id).first()
+    curso_txt = str(getattr(est, 'curso', '')).lower()
+    es_nidito = any(k in curso_txt for k in ['nidito', 'inicial', 'kinder', 'kínder', 'pre-kinder', 'prekinder'])
+
+    boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
+    os.makedirs(boletines_dir, exist_ok=True)
+    filename = f"boletin_{est.id}_{est.ci}.pdf"
+    filepath = os.path.join(boletines_dir, filename)
+
+    # Filtro estricto por ID
+    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id).all()
+
+    if es_nidito:
+        from utils.boletin_nidito_generator import generar_boletin_nidito_pdf
+        bytes_pdf = generar_boletin_nidito_pdf(est, calificaciones=calificaciones)
+    else:
         from utils.boletin_generator import generar_boletin_pdf
-        from models import Estudiante, Calificacion, Materia
-        from datetime import datetime
-
-        est = Estudiante.query.get_or_404(id)
-        anio_actual = datetime.now().year
-
-        calificaciones = Calificacion.query.filter(
-            or_(
-                Calificacion.estudiante_id == id,
-                Calificacion.ci_estudiante == est.ci
-            )
-        ).all()
-
         materias = Materia.query.all()
-
-        if not calificaciones:
-            flash('⚠️ El estudiante no tiene calificaciones registradas', 'warning')
-            return redirect(url_for('estudiantes.ver_estudiante', id=id))
-
-        url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
+        url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}"
         bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
 
-        filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
-        boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
-        os.makedirs(boletines_dir, exist_ok=True)
-        filepath = os.path.join(boletines_dir, filename)
+    with open(filepath, 'wb') as f:
+        f.write(bytes_pdf)
 
-        with open(filepath, 'wb') as f:
-            f.write(bytes_pdf)
-
-        flash('✅ Boletín generado exitosamente.', 'success')
-        return redirect(url_for('estudiantes.ver_boletin', id=id))
-
-    except Exception as e:
-        flash(f'❌ Error al generar el boletín: {str(e)}', 'danger')
-        return redirect(url_for('estudiantes.ver_estudiante', id=id))
-
-
-# ==============================================================================
-# DESCARGAR BOLETÍN PDF
-# ==============================================================================
+    # Anti-caché con timestamp
+    boletin_url = f"/static/boletines/{filename}?t={int(time.time())}"
+    return render_template('estudiantes/ver_boletin.html', est=est, padre=padre, boletin_filename=filename, boletin_url=boletin_url)
 
 @estudiantes_bp.route('/descargar_boletin/<int:id>')
 def descargar_boletin(id):
     from models import Estudiante, Calificacion, Materia
-    from utils.boletin_generator import generar_boletin_pdf
     from datetime import datetime
+    import io
+
     est = Estudiante.query.get_or_404(id)
+    curso_txt = str(getattr(est, 'curso', '')).lower()
+    es_nidito = any(k in curso_txt for k in ['nidito', 'inicial', 'kinder', 'kínder', 'pre-kinder', 'prekinder'])
+
+    if es_nidito:
+        from utils.boletin_nidito_generator import generar_boletin_nidito_pdf
+        califs = Calificacion.query.filter_by(estudiante_id=est.id).all()
+        pdf_bytes = generar_boletin_nidito_pdf(est, calificaciones=califs)
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=False,
+            download_name=f"Boletin_Nidito_{est.ci}.pdf"
+        )
+
+    from utils.boletin_generator import generar_boletin_pdf
     anio_actual = datetime.now().year
     boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
     os.makedirs(boletines_dir, exist_ok=True)
     filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
     filepath = os.path.join(boletines_dir, filename)
 
-    calificaciones = Calificacion.query.filter(
-        or_(Calificacion.estudiante_id == id, Calificacion.ci_estudiante == est.ci)
-    ).all()
+    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id).all()
     materias = Materia.query.all()
     url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
     bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
@@ -1058,8 +1084,6 @@ def descargar_boletin(id):
         f.write(bytes_pdf)
     return send_file(filepath, as_attachment=True, download_name=filename)
 
-
-# BOLETINES POR CURSO
 # ==============================================================================
 
 
@@ -1081,7 +1105,7 @@ def imprimir_calificaciones_detalle(id):
     calificaciones = Calificacion.query.filter(
         or_(
             Calificacion.estudiante_id == id,
-            Calificacion.ci_estudiante == est.ci
+            Calificacion.estudiante_id == id
         )
     ).all()
     materias = Materia.query.all()
@@ -1106,7 +1130,7 @@ def imprimir_boletin_directo(id):
     est = Estudiante.query.get_or_404(id)
     anio_actual = datetime.now().year
 
-    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
+    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id).all()
     materias = Materia.query.all()
     url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
     
@@ -1761,7 +1785,7 @@ def imprimir_materia_individual(id, materia_nombre):
     es_nidito = any(k in curso_txt for k in ['nidito', 'inicial', 'kinder', 'kínder', 'pre-kinder', 'prekinder'])
 
     calificaciones_raw = Calificacion.query.filter(
-        or_(Calificacion.estudiante_id == id, Calificacion.ci_estudiante == est.ci)
+        Calificacion.estudiante_id == id
     ).options(joinedload(Calificacion.materia)).all()
 
     califs_materia = [c for c in calificaciones_raw if c.materia and c.materia.nombre.strip().lower() == materia_nombre.lower()]
