@@ -33,6 +33,9 @@ from routes.auth import auth_bp
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
 
 app = Flask(__name__)
+# Optimizacion de cache para activos estaticos
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
+
 @app.context_processor
 def inject_now():
     return {'now': datetime.now}
