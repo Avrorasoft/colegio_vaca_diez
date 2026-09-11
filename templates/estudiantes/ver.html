@@ -182,7 +182,7 @@ Cardex - {{ est.apellidos }}, {{ est.nombres }} - Colegio Dr. Antonio Vaca Díez
             <i class="bi bi-arrow-left"></i> Volver
         </a>
 
-        <a href="{{ url_for('estudiantes.generar_boletin', id=est.id) }}"
+        <a href="{{ url_for('estudiantes.ver_boletin', id=est.id) }}"
            class="btn btn-primary">
             <i class="bi bi-file-earmark-pdf-fill"></i> Generar Boletín PDF
         </a>
