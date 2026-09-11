@@ -51,7 +51,7 @@ def bloquear_transacciones_sin_turno():
         es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
         
         if not turno_activo and not es_superadmin:
-            flash('❌ Acceso denegado: Ninguna transacción de dinero está permitida sin un Turno activo o perfil Superadmin.', 'danger')
+            flash('❌ Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
             try:
                 return redirect(url_for('dashboard.index'))
             except Exception:
@@ -231,7 +231,7 @@ if __name__ == '__main__':
             es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
             
             if not turno_activo and not es_superadmin:
-                flash('❌ Acceso denegado: Ninguna transacción de dinero está permitida sin un Turno activo o perfil Superadmin.', 'danger')
+                flash('❌ Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
                 try:
                     return redirect(url_for('dashboard.index'))
                 except Exception:

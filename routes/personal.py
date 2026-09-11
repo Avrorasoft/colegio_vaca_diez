@@ -571,15 +571,16 @@ def pagos_personal():
 
 @personal_bp.route('/registrar_pago', methods=['POST'])
 def registrar_pago():
-    # Validación estricta obligatoria: Turno activo o Superadmin
-    turno_activo = session.get('turno')
-    es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
-    if not turno_activo and not es_superadmin:
-        flash('❌ Debe iniciar sesión con un Turno activo o ser Superadmin para registrar pagos.', 'danger')
+    # 1. VALIDACIÓN ESTRICTA DE CAJA/TURNO
+    # Utilizamos la variable 'turno_activo' que es la llave maestra correcta en tu sistema
+    turno_activo = session.get('turno_activo')
+    if not turno_activo or str(turno_activo).strip().lower() in ['none', '', 'false']:
+        flash('❌ ACCESO DENEGADO: Apertura de Turno requerida. Nadie puede registrar pagos de sueldo sin un turno de caja activo.', 'danger')
         return redirect(url_for('personal.pagos_personal'))
 
-    persona_id_str = request.form.get('persona_id')
-    mes = request.form.get('mes')
+    # 2. RECEPCIÓN Y LIMPIEZA DE DATOS DEL FORMULARIO
+    persona_id_str = request.form.get('persona_id', '').strip()
+    mes = request.form.get('mes', '').strip()
     anio = int(request.form.get('anio', datetime.now().year))
 
     try:
@@ -599,6 +600,7 @@ def registrar_pago():
     nombre = ""
     tipo_db = ""
 
+    # Identificar si es Profesor o Administrativo
     if tipo_persona == 'P':
         p = Profesor.query.get(real_id)
         if p:
@@ -614,6 +616,19 @@ def registrar_pago():
         flash('Persona no encontrada en la base de datos', 'danger')
         return redirect(url_for('personal.pagos_personal'))
 
+    # 3. VALIDACIÓN ESTRICTA ANTI-DUPLICADOS (MES Y AÑO)
+    pago_existente = PagoPersonal.query.filter_by(
+        tipo=tipo_db,
+        persona_id=real_id,
+        mes=mes,
+        anio=anio
+    ).first()
+
+    if pago_existente:
+        flash(f'❌ BLOQUEO DE SEGURIDAD: El sueldo de {nombre} correspondiente a {mes} {anio} YA FUE PAGADO. No se permite doble pago.', 'danger')
+        return redirect(url_for('personal.pagos_personal'))
+
+    # 4. PROCESAMIENTO DEL PAGO (SI PASÓ LAS VALIDACIONES)
     monto_neto_pagado = max(0.0, monto_base - monto_adelanto)
 
     nuevo_pago = PagoPersonal(
@@ -630,6 +645,7 @@ def registrar_pago():
 
     db.session.add(nuevo_pago)
 
+    # 5. ACTUALIZACIÓN DE ADELANTOS Y SALARIO NETO
     if tipo_persona == 'P':
         persona = Profesor.query.get(real_id)
     else:
@@ -642,13 +658,8 @@ def registrar_pago():
 
     db.session.commit()
 
-    flash('✅ Pago registrado y descuento aplicado exitosamente', 'success')
+    flash('✅ Pago registrado exitosamente', 'success')
     return redirect(url_for('personal.pagos_personal'))
-
-
-# ==============================================================================
-# CARDEX DEL PROFESOR O ADMINISTRATIVO
-# ==============================================================================
 
 @personal_bp.route('/cardex/<tipo>/<int:id>')
 def cardex_personal(tipo, id):

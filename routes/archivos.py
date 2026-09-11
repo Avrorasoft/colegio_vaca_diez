@@ -22,10 +22,10 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def asegurar_turno_activo():
-    """Valida estrictamente que exista un turno activo en sesión o rol de superadmin."""
+    """Valida estrictamente que exista un turno activo en sesión ."""
     turno = session.get('turno_activo')
     rol = session.get('rol')
-    if not turno and rol != 'superadmin':
+    if not turno:
         return False
     return True
 

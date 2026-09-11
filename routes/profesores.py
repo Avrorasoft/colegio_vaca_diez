@@ -42,12 +42,12 @@ def allowed_file(filename):
 
 
 def asegurar_turno_activo():
-    """Valida estrictamente que exista un turno activo en sesión o rol de superadmin.
+    """Valida estrictamente que exista un turno activo en sesión .
     Cero asignaciones automáticas de turno bajo ninguna circunstancia."""
     turno = session.get('turno_activo')
     rol = session.get('rol')
 
-    if not turno and rol != 'superadmin':
+    if not turno:
         return False
     return True
 
@@ -275,7 +275,7 @@ def pagar_profesor(id):
         return redirect(url_for('profesores.ver_profesor', id=id))
 
     turno_actual = session.get('turno_activo')
-    responsable_turno = turno_actual if turno_actual else 'Superadmin'
+    responsable_turno = turno_actual if turno_actual else None
 
     profesor = Profesor.query.get_or_404(id)
     anio_actual = datetime.now().year

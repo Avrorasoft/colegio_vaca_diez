@@ -17,12 +17,12 @@ pagos_bp = Blueprint('pagos', __name__, template_folder='templates/pagos')
 
 
 def asegurar_turno_activo():
-    """Valida estrictamente que exista un turno activo en sesión o rol de superadmin. 
+    """Valida estrictamente que exista un turno activo en sesión . 
     Cero asignaciones automáticas de turno bajo ninguna circunstancia."""
     turno = session.get('turno_activo')
     rol = session.get('rol')
     
-    if not turno and rol != 'superadmin':
+    if not turno:
         return False
     return True
 
@@ -49,13 +49,13 @@ def index():
 # =========================================================================
 @pagos_bp.route('/registrar', methods=['GET', 'POST'])
 def registrar():
-    # ⭐ Validación estricta: Bloquea inmediatamente si no hay turno activo ni superadmin
+    # ⭐ Validación estricta: Bloquea inmediatamente si no hay turno activo 
     if not asegurar_turno_activo():
         flash('❌ Transacción bloqueada: El sistema no cuenta con un turno activo. Debe iniciar sesión manualmente en un turno para registrar pagos en caja.', 'danger')
         return redirect(url_for('pagos.index'))
 
     turno_actual = session.get('turno_activo')
-    responsable_turno = turno_actual if turno_actual else 'Superadmin'
+    responsable_turno = turno_actual if turno_actual else None
 
     if request.method == 'POST':
         try:
