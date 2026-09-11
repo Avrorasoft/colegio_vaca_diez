@@ -1,3 +1,7 @@
+from utils_backup import realizar_respaldo_db
+with app.app_context():
+    realizar_respaldo_db()
+
 # -*- coding: utf-8 -*-
 """
 ==============================================================================
