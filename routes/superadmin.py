@@ -41,7 +41,10 @@ from models import (
     ConfiguracionSuperadmin, ahora_bolivia
 )
 
+
 superadmin_bp = Blueprint('superadmin', __name__,
+
+
                           template_folder='templates/superadmin')
 
 _scheduler_informes_iniciado = False
@@ -82,7 +85,7 @@ def _obtener_superadmin_pass():
 _intentos_boveda = {}
 
 
-def _rate_limit_boveda(ip, max_intentos=3, ventana=600):
+def _rate_limit_boveda(ip, max_intentos=3, ventana=300):
     ahora = datetime.now().timestamp()
     if ip not in _intentos_boveda:
         _intentos_boveda[ip] = []
@@ -103,7 +106,7 @@ def check_superadmin():
     if login_time:
         try:
             dt_login = datetime.fromisoformat(login_time)
-            if (datetime.now() - dt_login).total_seconds() > 2 * 3600:
+            if (datetime.now() - dt_login).total_seconds() > 2 * 3300:
                 session.pop('superadmin_boveda', None)
                 session.pop('_boveda_login_time', None)
                 return False
@@ -664,7 +667,7 @@ def editar_pago(id):
 
 @superadmin_bp.route('/editar_nota/<int:id>', methods=['GET', 'POST'])
 def editar_nota(id):
-    if not (session.get('superadmin_activo') or session.get('superadmin_boveda') or (callable(globals().get('check_superadmin')) and check_superadmin())):
+    if not (session.get('superadmin_activo') or session.get('superadmin_boveda') or session.get('es_superadmin') or session.get('superadmin')):
         flash('🔒 Requiere autenticacion de Superadmin.', 'warning')
         return redirect(url_for('dashboard.index'))
 
@@ -1619,3 +1622,9 @@ def configuracion_institucion():
     )
 
 
+@superadmin_bp.before_app_request
+def verificar_salida_superadmin():
+    if request.path and not request.path.startswith('/superadmin'):
+        session.pop('superadmin_activo', None)
+        session.pop('superadmin_boveda', None)
+        session.pop('es_superadmin', None)

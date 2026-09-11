@@ -16,7 +16,13 @@ superadmin_api_bp = Blueprint('superadmin_api', __name__, url_prefix='/superadmi
 
 
 def superadmin_autorizado():
-    return session.get('superadmin_boveda') is True or session.get('es_superadmin') is True or session.get('rol') == 'superadmin'
+    return (
+        session.get('superadmin_activo') is True or
+        session.get('superadmin_boveda') is True or
+        session.get('es_superadmin') is True or
+        session.get('superadmin') is True or
+        session.get('rol') == 'superadmin'
+    )
 
 
 @superadmin_api_bp.route('/buscar_calificaciones')
@@ -25,25 +31,35 @@ def buscar_calificaciones():
         return jsonify({'error': 'Acceso no autorizado'}), 403
 
     query = request.args.get('q', '').strip()
-    if not query or len(query) < 2:
-        return jsonify([])
+    curso_filtro = request.args.get('curso', '').strip()
+    tipo_filtro = request.args.get('tipo', '').strip()
 
-    # Búsqueda de estudiantes por C.I., Apellidos o Nombres
-    estudiantes = Estudiante.query.filter(
-        (Estudiante.ci.ilike(f"%{query}%")) |
-        (Estudiante.apellidos.ilike(f"%{query}%")) |
-        (Estudiante.nombres.ilike(f"%{query}%"))
-    ).limit(10).all()
+    est_query = Estudiante.query
+    if curso_filtro:
+        est_query = est_query.filter(Estudiante.curso.ilike(f"%{curso_filtro}%"))
 
-    if not estudiantes:
-        return jsonify([])
+    if query and len(query) >= 2:
+        est_query = est_query.filter(
+            (Estudiante.ci.ilike(f"%{query}%")) |
+            (Estudiante.apellidos.ilike(f"%{query}%")) |
+            (Estudiante.nombres.ilike(f"%{query}%"))
+        )
 
+    estudiantes = est_query.limit(30).all()
     est_ids = [e.id for e in estudiantes]
     mapa_est = {e.id: e for e in estudiantes}
 
-    calificaciones = Calificacion.query.filter(
-        Calificacion.estudiante_id.in_(est_ids)
-    ).order_by(Calificacion.fecha.desc()).limit(40).all()
+    cal_query = Calificacion.query
+    if est_ids:
+        cal_query = cal_query.filter(Calificacion.estudiante_id.in_(est_ids))
+    elif query and len(query) >= 2:
+        # Si no hay estudiantes pero se buscó texto, permitimos buscar directo en calificaciones si fuera necesario
+        return jsonify([])
+
+    if tipo_filtro:
+        cal_query = cal_query.filter(Calificacion.tipo.ilike(f"%{tipo_filtro}%"))
+
+    calificaciones = cal_query.order_by(Calificacion.fecha.desc()).limit(50).all()
 
     resultados = []
     for c in calificaciones:
