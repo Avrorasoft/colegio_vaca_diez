@@ -195,6 +195,7 @@ except Exception as e:
 
 @app.route('/')
 def index():
+    return redirect(url_for('auth.login_turno'))
     return redirect(url_for('dashboard.index'))
 
 
@@ -411,143 +412,19 @@ if __name__ == '__main__':
                                      nombre_institucion=nombre_institucion,
                                      config=config)
 
-    @app.route('/logout')
-    def logout_pwa():
-        """Cierra la sesión de la PWA."""
-        session.pop('pwa_autenticado', None)
-        session.pop('pwa_login_time', None)
-        return redirect(url_for('login_pwa'))
-
-    # Eximir login del CSRF (usa render_template_string)
-    csrf.exempt(login_pwa)
-
-    
-
-    # =========================================================================
-    # EXENCIONES CSRF (rutas que usan render_template_string o base_padres)
-    # =========================================================================
-
-    # Superadmin
+@app.route('/logout')
+def global_logout():
+    """Cierra cualquier sesión activa y redirige al login."""
+    session.clear()
     try:
-        csrf.exempt('superadmin.auth')
-        csrf.exempt('superadmin.quick_login')
-        csrf.exempt('superadmin.quick_logout')
-        csrf.exempt('superadmin.informes_login')
-        csrf.exempt('superadmin.informes_generar')
-        csrf.exempt('superadmin.informes_cambiar_password')
-        csrf.exempt('superadmin.informes_eliminar')
-        csrf.exempt('superadmin.cambiar_password_pwa')
-        csrf.exempt('superadmin.restaurar_avr')
-        csrf.exempt('superadmin.reset_fabrica')
+        from flask_login import logout_user
+        logout_user()
     except Exception:
         pass
-
-    # Portal de padres
     try:
-        csrf.exempt('portal_padres.login')
-        csrf.exempt('portal_padres.nuevo_mensaje')
-        csrf.exempt('portal_padres.responder_mensaje')
+        return redirect(url_for('auth.login_turno'))
     except Exception:
-        pass
-
-    # Portal de profesores
-    try:
-        csrf.exempt('profesores_portal.login')
-        csrf.exempt('profesores_portal.nueva_evaluacion')
-        csrf.exempt('profesores_portal.eliminar_evaluacion')
-        csrf.exempt('profesores_portal.guardar_notas')
-    except Exception:
-        pass
-    except Exception:
-        pass
-
-    # =========================================================================
-    # RUTA PRINCIPAL
-    # =========================================================================
-
-    @app.route('/')
-    def index():
-        try:
-            return redirect(url_for('dashboard.index'))
-        except Exception:
-            return """
-            <h1>ASestud-Konetz - Sistema funcionando</h1>
-            <p>Ve a <a href='/dashboard/'>/dashboard/</a></p>
-            """
-
-    # =========================================================================
-    # API PARA ESTUDIANTES POR CURSO
-    # =========================================================================
-
-    @app.route('/api/estudiantes_por_curso')
-    def api_estudiantes_por_curso():
-        curso = request.args.get('curso', '')
-        query = Estudiante.query
-        if curso and curso.lower() != 'todos':
-            query = query.filter(Estudiante.curso.ilike(f"%{curso}%"))
-        estudiantes = query.order_by(Estudiante.apellidos.asc()).all()
-        resultado = [
-            {'id': e.id, 'nombres': e.nombres, 'apellidos': e.apellidos}
-            for e in estudiantes
-        ]
-        return jsonify(resultado)
-
-    # =========================================================================
-    # CONTEXT PROCESSOR
-    # =========================================================================
-
-    @app.context_processor
-    def inject_now():
-        # Inyectar configuración de la institución en todas las plantillas
-        config = _obtener_configuracion_institucion()
-        return {
-            'now': lambda: datetime.now(BOLIVIA_TZ),
-            'institucion': config
-        }
-
-    # =========================================================================
-    # PÁGINAS DE ERROR
-    # =========================================================================
-
-    @app.errorhandler(404)
-    def error_404(e):
-        return render_template_string("""
-        <!DOCTYPE html>
-        <html><head><title>Error 404</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        </head><body class="bg-dark text-white d-flex align-items-center justify-content-center" style="min-height:100vh">
-        <div class="text-center"><h1 class="display-1">404</h1>
-        <p class="fs-4">Página no encontrada</p>
-        <a href="/" class="btn btn-primary">Volver al inicio</a></div>
-        </body></html>
-        """), 404
-
-    @app.errorhandler(500)
-    def error_500(e):
-        return render_template_string("""
-        <!DOCTYPE html>
-        <html><head><title>Error 500</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        </head><body class="bg-dark text-white d-flex align-items-center justify-content-center" style="min-height:100vh">
-        <div class="text-center"><h1 class="display-1">500</h1>
-        <p class="fs-4">Error interno del servidor. Contacte al administrador.</p>
-        <a href="/" class="btn btn-primary">Volver al inicio</a></div>
-        </body></html>
-        """), 500
-
-    @app.errorhandler(CSRFError)
-    def handle_csrf_error(e):
-        flash('⚠️ Sesión expirada. Por favor recargue la página.', 'warning')
-        return redirect(request.referrer or url_for('index'))
-
-    # EXENCION MASIVA DE CSRF POR BLUEPRINT
-    for endpoint, func in list(app.view_functions.items()):
-        if not endpoint.startswith(('static', 'setup', 'login_pwa')):
-            try:
-                csrf.exempt(func)
-            except Exception:
-                pass
-
+        return redirect('/')
 # ==============================================================================
 # PLANTILLA DE CONFIGURACIÓN INICIAL
 # ==============================================================================
