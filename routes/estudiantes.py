@@ -1082,6 +1082,7 @@ def boletines_curso(curso):
 # EDICIÓN DE DATOS DEL ESTUDIANTE (PERMITE EDITAR C.I. Y TURNO)
 # ==============================================================================
 
+@profesor_autorizado_requerido
 @estudiantes_bp.route('/editar/<int:id>', methods=['GET', 'POST'])
 def editar_estudiante(id):
   if id == 0 or id is None:
