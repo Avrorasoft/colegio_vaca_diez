@@ -1,8 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Generador de Boletines en PDF con diseño escalonado por trimestre
-SOPORTE COMPLETO: Nidito (Cualitativo) y Primaria/Secundaria (Cuantitativo)
-"""
 import os
 import io
 import tempfile
@@ -17,32 +13,7 @@ from utils_pdf import ruta_logo, nombre_institucion
 
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
 
-def _estampar_marca_agua_estudiante(c_canvas, estudiante, width, height):
-    """Estampa la marca de agua de seguridad institucional con opacidad exacta del 15%."""
-    try:
-        c_canvas.saveState()
-        c_canvas.setFillColor(colors.Color(0.2, 0.2, 0.2, alpha=0.15))
-        c_canvas.setFont("Helvetica-Bold", 36)
-        c_canvas.translate(width / 2.0, height / 2.0)
-        c_canvas.rotate(32)
-
-        apellidos = getattr(estudiante, 'apellidos', '') or ''
-        nombres = getattr(estudiante, 'nombres', '') or ''
-        ci = getattr(estudiante, 'ci', '') or ''
-        exp = getattr(estudiante, 'expedido', '') or 'BN'
-        rude = getattr(estudiante, 'rude', '') or '-'
-
-        nombre_est = f"{apellidos} {nombres}".strip().upper()
-        if nombre_est:
-            c_canvas.drawCentredString(0, 25, nombre_est)
-            c_canvas.setFont("Helvetica-Bold", 14)
-            c_canvas.drawCentredString(0, -12, f"C.I. {ci} {exp}  •  RUDE: {rude}  •  COL. DR. ANTONIO VACA DÍEZ")
-        c_canvas.restoreState()
-    except Exception:
-        pass
-
 def guardar_boletin_localmente(estudiante, pdf_bytes):
-    """Función auxiliar de compatibilidad."""
     try:
         anio_actual = datetime.now(BOLIVIA_TZ).year
         est_id = getattr(estudiante, 'id', '0')
@@ -55,315 +26,200 @@ def guardar_boletin_localmente(estudiante, pdf_bytes):
             f.write(pdf_bytes)
         return filename
     except Exception as e:
-        print(f"Error al guardar boletín localmente: {e}")
+        print(f"Error al guardar boletin: {e}")
         return None
 
 def generar_boletin_pdf(estudiante, calificaciones, materias, cloudinary_url=None):
-    """Genera un Boletín de Calificaciones en orientación horizontal (landscape),
-    adaptado estrictamente según el nivel (Nidito vs Primaria/Secundaria)."""
-
     buffer = io.BytesIO()
     c_canvas = canvas.Canvas(buffer, pagesize=landscape(letter))
     width, height = landscape(letter)
 
-    # Detección estricta y exclusiva para Nidito
-    es_nidito = False
-    curso_str = ""
-    if estudiante:
-        if isinstance(estudiante, dict):
-            curso_str = str(estudiante.get('curso', '') or estudiante.get('nivel', '')).lower().strip()
-        else:
-            curso_str = str(getattr(estudiante, 'curso', '') or getattr(estudiante, 'nivel', '')).lower().strip()
-    
-    if curso_str.startswith('nidito') or curso_str.startswith('inicial') or curso_str.startswith('kinder'):
-        es_nidito = True
+    # Datos estudiante
+    if isinstance(estudiante, dict):
+        nombre_est = estudiante.get('nombre_completo') or f"{estudiante.get('nombres', '')} {estudiante.get('apellidos', '')}".strip() or "Estudiante"
+        curso_est = estudiante.get('curso', 'Secundaria')
+        rude_est = estudiante.get('rude', '-')
+        turno_est = estudiante.get('turno', 'Regular')
+        ci_est = estudiante.get('ci', '-')
+    else:
+        nombre_est = getattr(estudiante, 'nombre_completo', None) or f"{getattr(estudiante, 'nombres', '')} {getattr(estudiante, 'apellidos', '')}".strip() or "Estudiante"
+        curso_est = getattr(estudiante, 'curso', getattr(estudiante, 'nivel', 'Secundaria'))
+        rude_est = getattr(estudiante, 'rude', '-')
+        turno_est = getattr(estudiante, 'turno', 'Regular')
+        ci_est = getattr(estudiante, 'ci', '-')
 
-    # Datos del estudiante
-    nombre_est = "Estudiante"
-    if estudiante:
-        if isinstance(estudiante, dict):
-            nombre_est = (
-                estudiante.get('nombre_completo') or
-                estudiante.get('nombre') or
-                f"{estudiante.get('nombres', '')} {estudiante.get('apellidos', '')}".strip() or
-                "Estudiante"
-            )
-        else:
-            nombre_est = (
-                getattr(estudiante, 'nombre_completo', None) or
-                getattr(estudiante, 'nombre', None) or
-                (f"{getattr(estudiante, 'nombres', '')} {getattr(estudiante, 'apellidos', '')}".strip() if hasattr(estudiante, 'nombres') or hasattr(estudiante, 'apellidos') else None) or
-                "Estudiante"
-            )
-
-    curso_est = getattr(estudiante, 'curso', getattr(estudiante, 'nivel', '6to. de Secundaria')) if not isinstance(estudiante, dict) else estudiante.get('curso', '6to. de Secundaria')
-    rude_est = getattr(estudiante, 'rude', getattr(estudiante, 'codigo', 'S/N')) if not isinstance(estudiante, dict) else estudiante.get('rude', 'S/N')
-    turno_est = getattr(estudiante, 'turno', 'Regular') if not isinstance(estudiante, dict) else estudiante.get('turno', 'Regular')
-
-    materias_notas = {}
-    parciales_keys = ['P1', 'P2', 'P3', 'P4']
+    # Procesamiento cuantitativo estricto
     trimestres_activos = [1, 2, 3]
+    materias_notas = {}
+
+    # Filtrar y excluir cualquier materia o calificación residual de nidito/inicial/kinder
+    materias_validas = [
+        m for m in materias 
+        if not any(term in (m.nombre or '').lower() for term in ['nidito', 'inicial', 'kinder'])
+    ]
 
     for cal in calificaciones:
-        mat = next((m for m in materias if str(m.id) == str(cal.materia_id)), None)
-        if mat is None:
+        mat = next((m for m in materias_validas if str(m.id) == str(cal.materia_id)), None)
+        if not mat:
             continue
-
-        mat_nombre = mat.nombre
-        if mat_nombre not in materias_notas:
-            if es_nidito:
-                materias_notas[mat_nombre] = []
-            else:
-                materias_notas[mat_nombre] = {
-                    1: {k: None for k in parciales_keys},
-                    2: {k: None for k in parciales_keys},
-                    3: {k: None for k in parciales_keys}
-                }
+        mat_nom = mat.nombre.strip()
+        if mat_nom not in materias_notas:
+            materias_notas[mat_nom] = {1: [], 2: [], 3: []}
 
         raw_tri = getattr(cal, 'trimestre', None) or getattr(cal, 'periodo', None) or 1
         try:
             tri = int(raw_tri)
-        except (ValueError, TypeError):
+        except Exception:
             tri = 1
-
         if tri not in trimestres_activos:
             tri = 1
 
-        tipo_texto = (cal.tipo or '').upper().strip()
+        if cal.nota is not None:
+            try:
+                materias_notas[mat_nom][tri].append(float(cal.nota))
+            except (ValueError, TypeError):
+                pass
 
-        if es_nidito:
-            if not isinstance(materias_notas[mat_nombre], list):
-                materias_notas[mat_nombre] = []
-            materias_notas[mat_nombre].append({
-                'tipo': cal.tipo,
-                'valoracion': getattr(cal, 'valoracion_cualitativa', '') or '',
-                'informe': getattr(cal, 'informe_descriptivo', '') or '',
-                'periodo': getattr(cal, 'periodo', '1er Trimestre')
-            })
-            continue
+    for m in materias_validas:
+        mat_nom = m.nombre.strip()
+        if mat_nom not in materias_notas:
+            materias_notas[mat_nom] = {1: [], 2: [], 3: []}
 
-        eval_key = 'P1'
-        if '4' in tipo_texto or 'CUARTO' in tipo_texto:
-            eval_key = 'P4'
-        elif '3' in tipo_texto or 'TERCER' in tipo_texto:
-            eval_key = 'P3'
-        elif '2' in tipo_texto or 'SEGUNDO' in tipo_texto:
-            eval_key = 'P2'
-        elif tipo_texto in parciales_keys:
-            eval_key = tipo_texto
-
-        if isinstance(materias_notas[mat_nombre], dict):
-            materias_notas[mat_nombre][tri][eval_key] = cal.nota
-
-    for m in materias:
-        if m.nombre not in materias_notas:
-            if es_nidito:
-                materias_notas[m.nombre] = []
-            else:
-                materias_notas[m.nombre] = {
-                    1: {k: None for k in parciales_keys},
-                    2: {k: None for k in parciales_keys},
-                    3: {k: None for k in parciales_keys}
-                }
-
-    lista_tabla_data = []
-    suma_promedios_generales = 0
-    total_materias_evaluadas = 0
-
-    if not es_nidito:
-        for mat_nombre, trim_data in materias_notas.items():
-            fila_item = {'nombre': mat_nombre, 'trimestres': {}, 'promedio_anual': '-'}
-            notas_todas_materia = []
-
-            for tri in trimestres_activos:
-                p_dict = trim_data.get(tri, {k: None for k in parciales_keys})
-                lista_p_tri = [p_dict[k] for k in parciales_keys if p_dict[k] is not None]
-
-                if lista_p_tri:
-                    prom_tri = sum(lista_p_tri) / len(lista_p_tri)
-                    fila_item['trimestres'][tri] = {
-                        'notas': [f"{p_dict[k]:.0f}" if p_dict[k] is not None else "-" for k in parciales_keys],
-                        'prom': f"{prom_tri:.1f}"
-                    }
-                    notas_todas_materia.extend(lista_p_tri)
-                else:
-                    fila_item['trimestres'][tri] = {
-                        'notas': ["-", "-", "-", "-"],
-                        'prom': "-"
-                    }
-
-            if notas_todas_materia:
-                prom_anual_mat = sum(notas_todas_materia) / len(notas_todas_materia)
-                fila_item['promedio_anual'] = f"{prom_anual_mat:.1f}"
-                suma_promedios_generales += prom_anual_mat
-                total_materias_evaluadas += 1
-
-            lista_tabla_data.append(fila_item)
-
-    promedio_general_institucional = (suma_promedios_generales / total_materias_evaluadas) if total_materias_evaluadas > 0 else 0
-
+    # Fondo blanco
     c_canvas.setFillColor(colors.white)
     c_canvas.rect(0, 0, width, height, fill=1, stroke=0)
 
-    _estampar_marca_agua_estudiante(c_canvas, estudiante, width, height)
-
+    # Cabecera institucional
     logo_path = ruta_logo()
     if logo_path and os.path.exists(logo_path):
         try:
-            c_canvas.drawImage(logo_path, 40, height - 90, width=75, height=75, preserveAspectRatio=True, mask='auto')
+            c_canvas.drawImage(logo_path, 36, height - 76, width=62, height=62, preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
 
-    c_canvas.setFillColor(colors.HexColor('#1A365D'))
-    c_canvas.setFont("Helvetica-Bold", 18)
-    c_canvas.drawString(130, height - 42, nombre_institucion().upper())
+    c_canvas.setFillColor(colors.HexColor('#0F2942'))
+    c_canvas.setFont("Helvetica-Bold", 16)
+    c_canvas.drawString(108, height - 36, nombre_institucion().upper())
 
-    c_canvas.setFont("Helvetica", 11)
+    c_canvas.setFont("Helvetica", 9)
     c_canvas.setFillColor(colors.HexColor('#4A5568'))
-    c_canvas.drawString(130, height - 60, "COLEGIO PARTICULAR - EXCELENCIA ACADÉMICA Y EDUCATIVA")
+    c_canvas.drawString(108, height - 50, "COLEGIO PARTICULAR - EXCELENCIA ACADÉMICA Y FORMACIÓN INTEGRAL")
 
-    c_canvas.setFont("Helvetica-Bold", 14)
-    c_canvas.setFillColor(colors.HexColor('#2B6CB0'))
-    c_canvas.drawRightString(width - 40, height - 42, "BOLETÍN OFICIAL DE CALIFICACIONES")
+    c_canvas.setFont("Helvetica-Bold", 13)
+    c_canvas.setFillColor(colors.HexColor('#1E4E79'))
+    c_canvas.drawRightString(width - 36, height - 36, "BOLETÍN OFICIAL DE CALIFICACIONES")
 
-    fecha_emision = datetime.now(BOLIVIA_TZ).strftime('%d de %B de %Y')
-    c_canvas.setFont("Helvetica", 10)
+    meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    ahora = datetime.now(BOLIVIA_TZ)
+    fecha_txt = f"{ahora.day} de {meses[ahora.month - 1]} de {ahora.year}"
+    c_canvas.setFont("Helvetica", 9)
     c_canvas.setFillColor(colors.HexColor('#718096'))
-    c_canvas.drawRightString(width - 40, height - 60, f"Fecha de Emisión: {fecha_emision}")
+    c_canvas.drawRightString(width - 36, height - 50, f"Gestión {ahora.year} • Emisión: {fecha_txt}")
 
-    c_canvas.setFillColor(colors.HexColor('#F7FAFC'))
-    c_canvas.setStrokeColor(colors.HexColor('#CBD5E0'))
-    c_canvas.roundRect(40, height - 135, width - 80, 42, 6, fill=1, stroke=1)
+    # Cuadro de datos del estudiante
+    c_canvas.setFillColor(colors.HexColor('#F8FAFC'))
+    c_canvas.setStrokeColor(colors.HexColor('#CBD5E1'))
+    c_canvas.roundRect(36, height - 118, width - 72, 36, 4, fill=1, stroke=1)
 
-    c_canvas.setFont("Helvetica-Bold", 10)
-    c_canvas.setFillColor(colors.HexColor('#2D3748'))
-    c_canvas.drawString(55, height - 105, f"Estudiante: {nombre_est}")
-    c_canvas.drawString(380, height - 105, f"Curso / Nivel: {curso_est}")
-    c_canvas.drawString(55, height - 122, f"Código RUDE: {rude_est}")
-    c_canvas.drawString(380, height - 122, f"Turno: {turno_est}")
+    c_canvas.setFont("Helvetica-Bold", 9)
+    c_canvas.setFillColor(colors.HexColor('#1E293B'))
+    c_canvas.drawString(48, height - 96, f"Estudiante: {nombre_est.upper()}")
+    c_canvas.drawString(320, height - 96, f"Curso: {curso_est}")
+    c_canvas.drawString(560, height - 96, f"C.I.: {ci_est}")
 
-    if not es_nidito:
-        c_canvas.setFont("Helvetica-Bold", 10)
-        c_canvas.setFillColor(colors.HexColor('#1A365D'))
-        c_canvas.drawRightString(width - 55, height - 138, f"Promedio General Anual: {promedio_general_institucional:.1f}")
+    c_canvas.setFont("Helvetica", 9)
+    c_canvas.setFillColor(colors.HexColor('#475569'))
+    c_canvas.drawString(48, height - 110, f"Código RUDE: {rude_est}")
+    c_canvas.drawString(320, height - 110, f"Turno: {turno_est}")
 
+    # Estilos de celda
     styles = getSampleStyleSheet()
-    est_th_main = ParagraphStyle('THMain', fontName='Helvetica-Bold', fontSize=10, leading=12, textColor=colors.white, alignment=1)
-    est_th_sub = ParagraphStyle('THSub', fontName='Helvetica-Bold', fontSize=9, leading=11, textColor=colors.white, alignment=1)
-    est_td_mat = ParagraphStyle('TDMat', fontName='Helvetica-Bold', fontSize=10, leading=13, alignment=0, textColor=colors.HexColor('#1A365D'))
-    est_td_val = ParagraphStyle('TDVal', fontName='Helvetica', fontSize=10, leading=13, alignment=1, textColor=colors.HexColor('#2D3748'))
-    est_td_prom = ParagraphStyle('TDProm', fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1, textColor=colors.HexColor('#2B6CB0'))
+    th_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=9, leading=11, textColor=colors.white, alignment=1)
+    td_mat = ParagraphStyle('TDMat', fontName='Helvetica-Bold', fontSize=9, leading=12, textColor=colors.HexColor('#0F172A'))
+    td_val = ParagraphStyle('TDVal', fontName='Helvetica', fontSize=9, leading=12, alignment=1, textColor=colors.HexColor('#334155'))
+    td_prom = ParagraphStyle('TDProm', fontName='Helvetica-Bold', fontSize=9, leading=12, alignment=1, textColor=colors.HexColor('#0F2942'))
 
-    header_row_1 = [
-        Paragraph("<b>MATERIAS</b>", est_th_main),
-        Paragraph("<b>PRIMER TRIMESTRE</b>", est_th_main), "", "", "", "",
-        Paragraph("<b>SEGUNDO TRIMESTRE</b>", est_th_main), "", "", "", "",
-        Paragraph("<b>TERCER TRIMESTRE</b>", est_th_main), "", "", "", "",
-        Paragraph("<b>PROM. ANUAL</b>", est_th_main)
-    ]
+    filas_tabla = [[
+        Paragraph("ÁREA / MATERIA", th_style),
+        Paragraph("1° TRIMESTRE", th_style),
+        Paragraph("2° TRIMESTRE", th_style),
+        Paragraph("3° TRIMESTRE", th_style),
+        Paragraph("PROMEDIO FINAL", th_style)
+    ]]
 
-    header_row_2 = [
-        "",
-        Paragraph("P1", est_th_sub), Paragraph("P2", est_th_sub), Paragraph("P3", est_th_sub), Paragraph("P4", est_th_sub), Paragraph("PROM", est_th_sub),
-        Paragraph("P1", est_th_sub), Paragraph("P2", est_th_sub), Paragraph("P3", est_th_sub), Paragraph("P4", est_th_sub), Paragraph("PROM", est_th_sub),
-        Paragraph("P1", est_th_sub), Paragraph("P2", est_th_sub), Paragraph("P3", est_th_sub), Paragraph("P4", est_th_sub), Paragraph("PROM", est_th_sub),
-        ""
-    ]
+    suma_anuales = 0
+    total_materias = 0
 
-    tabla_data = [header_row_1, header_row_2]
+    for mat_nom in sorted(materias_notas.keys()):
+        t_dict = materias_notas[mat_nom]
+        fila = [Paragraph(mat_nom, td_mat)]
+        proms_trimestres = []
 
-    for item in lista_tabla_data:
-        fila = [Paragraph(item['nombre'], est_td_mat)]
         for tri in [1, 2, 3]:
-            t_info = item['trimestres'].get(tri, {'notas': ["-", "-", "-", "-"], 'prom': "-"})
-            for nota_val in t_info['notas']:
-                fila.append(Paragraph(nota_val, est_td_val))
-            fila.append(Paragraph(f"<b>{t_info['prom']}</b>", est_td_val))
-        fila.append(Paragraph(item['promedio_anual'], est_td_prom))
-        tabla_data.append(fila)
-
-    col_widths = [152] + [32, 32, 32, 32, 36] + [32, 32, 32, 32, 36] + [32, 32, 32, 32, 36] + [80]
-
-    if es_nidito:
-        est_th_nidito = ParagraphStyle('THNidito', fontName='Helvetica-Bold', fontSize=9, leading=11, textColor=colors.white, alignment=1)
-        est_td_left = ParagraphStyle('TDLeft', fontName='Helvetica', fontSize=9, leading=12, alignment=0, textColor=colors.HexColor('#2D3748'))
-        est_td_center = ParagraphStyle('TDCenter', fontName='Helvetica', fontSize=9, leading=12, alignment=1, textColor=colors.HexColor('#2D3748'))
-
-        tabla_rows = [
-            [
-                Paragraph("<b>ÁREA / DIMENSIÓN DE DESARROLLO</b>", est_th_nidito), 
-                Paragraph("<b>PERIODO</b>", est_th_nidito), 
-                Paragraph("<b>VALORACIÓN / LOGRO CUALITATIVO</b>", est_th_nidito), 
-                Paragraph("<b>INFORME DESCRIPTIVO / RECOMENDACIONES</b>", est_th_nidito)
-            ]
-        ]
-        for mat_nombre, registros in materias_notas.items():
-            if isinstance(registros, list) and registros:
-                for r in registros:
-                    tabla_rows.append([
-                        Paragraph(f"<b>{mat_nombre}</b><br/><font color='#666666'>{r.get('tipo', '')}</font>", est_td_left),
-                        Paragraph(r.get('periodo', '1er Trimestre'), est_td_center),
-                        Paragraph(f"<b><font color='#2b6cb0'>{r.get('valoracion', '-')}</font></b>", est_td_center),
-                        Paragraph(r.get('informe', '-'), est_td_left)
-                    ])
+            notas_tri = t_dict.get(tri, [])
+            if notas_tri:
+                prom_tri = sum(notas_tri) / len(notas_tri)
+                fila.append(Paragraph(f"{prom_tri:.1f}", td_val))
+                proms_trimestres.append(prom_tri)
             else:
-                tabla_rows.append([
-                    Paragraph(f"<b>{mat_nombre}</b>", est_td_left),
-                    Paragraph("1er Trimestre", est_td_center),
-                    Paragraph("-", est_td_center),
-                    Paragraph("-", est_td_left)
-                ])
-        t = Table(tabla_rows, colWidths=[180, 90, 140, 302], repeatRows=1)
-    else:
-        t = Table(tabla_data, colWidths=col_widths, repeatRows=2)
+                fila.append(Paragraph("-", td_val))
 
-    if es_nidito:
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1A365D')),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E0')),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
-    else:
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor('#1A365D')),
-            ('SPAN', (0, 0), (0, 1)),
-            ('SPAN', (1, 0), (5, 0)),
-            ('SPAN', (6, 0), (10, 0)),
-            ('SPAN', (11, 0), (15, 0)),
-            ('SPAN', (16, 0), (16, 1)),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E0')),
-        ]))
+        if proms_trimestres:
+            prom_anual = sum(proms_trimestres) / len(proms_trimestres)
+            fila.append(Paragraph(f"<b>{prom_anual:.1f}</b>", td_prom))
+            suma_anuales += prom_anual
+            total_materias += 1
+        else:
+            fila.append(Paragraph("-", td_val))
 
-    t.wrapOn(c_canvas, width, height)
-    t.drawOn(c_canvas, 40, height - 380)
+        filas_tabla.append(fila)
 
-    qr_text = cloudinary_url if cloudinary_url else f"ESTUDIANTE: {nombre_est} | CURSO: {curso_est} | RUDE: {rude_est}"
-    qr = qrcode.QRCode(version=1, box_size=3, border=1)
+    prom_inst = (suma_anuales / total_materias) if total_materias > 0 else 0
+    c_canvas.setFont("Helvetica-Bold", 9)
+    c_canvas.setFillColor(colors.HexColor('#0F2942'))
+    c_canvas.drawString(560, height - 110, f"Prom. General: {prom_inst:.1f}")
+
+    # Tabla: 5 columnas exactas distribuidas en 720 pt
+    col_w = [300, 105, 105, 105, 105]
+
+    t = Table(filas_tabla, colWidths=col_w, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E4E79')),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+    ]))
+
+    w_tab, h_tab = t.wrap(width - 72, height)
+    pos_y = max(68, height - 130 - h_tab)
+    t.drawOn(c_canvas, 36, pos_y)
+
+    # QR de verificación
+    qr_text = cloudinary_url if cloudinary_url else f"COLEGIO VACA DIEZ | EST: {nombre_est} | RUDE: {rude_est} | CURSO: {curso_est}"
+    qr = qrcode.QRCode(version=1, box_size=2, border=1)
     qr.add_data(qr_text)
     qr.make(fit=True)
     img_qr = qr.make_image(fill_color="black", back_color="white")
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_qr:
         img_qr.save(tmp_qr.name)
         tmp_qr_path = tmp_qr.name
 
     try:
-        c_canvas.drawImage(tmp_qr_path, width - 100, 40, width=60, height=60)
+        c_canvas.drawImage(tmp_qr_path, width - 86, 16, width=48, height=48)
     except Exception:
         pass
     finally:
         if os.path.exists(tmp_qr_path):
             os.unlink(tmp_qr_path)
 
-    c_canvas.setFont("Helvetica", 8)
-    c_canvas.setFillColor(colors.HexColor('#718096'))
-    c_canvas.drawString(40, 50, f"Generado digitalmente por Sistema de Gestión Educativa - {nombre_institucion()}")
-    c_canvas.drawString(40, 38, "Este documento posee validez institucional bajo registro en base de datos.")
+    c_canvas.setFont("Helvetica", 7.5)
+    c_canvas.setFillColor(colors.HexColor('#64748B'))
+    c_canvas.drawString(36, 32, f"Documento oficial generado digitalmente por el Sistema Académico - {nombre_institucion()}")
+    c_canvas.drawString(36, 22, "Válido institucionalmente con registro en base de datos. Verificación mediante código QR.")
 
     c_canvas.save()
     buffer.seek(0)

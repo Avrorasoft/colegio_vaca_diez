@@ -951,68 +951,45 @@ def enviar_recibo_chat(id):
 
 @estudiantes_bp.route('/ver_boletin/<int:id>')
 def ver_boletin(id):
-  est = Estudiante.query.get_or_404(id)
-  padre = Padre.query.filter_by(estudiante_id=id).first()
-  anio_actual = datetime.now().year
-
-  # ⭐ Usar C.I. en el nombre del archivo
-  filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
-  filepath = os.path.join(os.getcwd(), 'static', 'boletines', filename)
-
-  if True: # Forzar regeneración con marca de agua
+    from models import Estudiante, Calificacion, Materia, Padre
+    from utils.boletin_generator import generar_boletin_pdf
+    from datetime import datetime
+    
+    est = Estudiante.query.get_or_404(id)
+    padre = Padre.query.filter_by(estudiante_id=id).first()
+    anio_actual = datetime.now().year
+    
+    boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
+    os.makedirs(boletines_dir, exist_ok=True)
+    
+    # Nombre de archivo estandarizado basado en el ID y C.I.
+    filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
+    filepath = os.path.join(boletines_dir, filename)
+    
+    # Generar o actualizar siempre el PDF moderno con los datos actuales de la BD relacional
     try:
-      from utils.boletin_generator import generar_boletin_pdf
-
-      # ⭐ Búsqueda dual robusta por ID y por C.I.
-      calificaciones = Calificacion.query.filter(
-        or_(
-          Calificacion.estudiante_id == id,
-          Calificacion.ci_estudiante == est.ci
-        )
-      ).all()
-
-      materias = Materia.query.all()
-
-      if not calificaciones:
-        flash('⚠️ El estudiante no tiene calificaciones registradas en el sistema', 'warning')
-        return redirect(url_for('estudiantes.ver_estudiante', id=id))
-
-      tunnel_url = current_app.config.get('TUNNEL_URL', '')
-
-      if not tunnel_url or 'localhost' in tunnel_url or '127.0.0.1' in tunnel_url:
-        tunnel_url = request.host_url.rstrip('/')
-
-      # ⭐ URL de verificación con C.I.
-      url_verificacion = f"{tunnel_url}/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
-
-      bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
-
-      os.makedirs(os.path.dirname(filepath), exist_ok=True)
-
-      with open(filepath, 'wb') as f:
-        f.write(bytes_pdf)
-
-      flash('✅ Boletín generado exitosamente.', 'success')
-
+        calificaciones = Calificacion.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
+        materias = Materia.query.all()
+        
+        # URL de verificación simulada o local para el QR del boletín moderno
+        url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
+        bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
+        
+        with open(filepath, 'wb') as f:
+            f.write(bytes_pdf)
     except Exception as e:
-      flash(f'❌ Error al generar el boletín: {str(e)}', 'danger')
-      return redirect(url_for('estudiantes.ver_estudiante', id=id))
+        print(f"Error generando PDF moderno: {e}")
 
-  boletin_url = f"/static/boletines/{filename}"
-
-  return render_template(
-    'estudiantes/ver_boletin.html',
-    est=est,
-    padre=padre,
-    boletin_filename=filename,
-    boletin_url=boletin_url
-  )
-
-
-# ==============================================================================
-# GENERAR BOLETÍN PDF (BÚSQUEDA BLINDADA ID + C.I. + CATBOX.MOE)
-# ==============================================================================
-
+    boletin_url = f"/static/boletines/{filename}"
+    
+    # Renderizar la vista moderna que incrusta el visor de PDF oficial
+    return render_template(
+        'estudiantes/ver_boletin.html',
+        est=est,
+        padre=padre,
+        boletin_filename=filename,
+        boletin_url=boletin_url
+    )
 @estudiantes_bp.route('/generar_boletin/<int:id>')
 def generar_boletin(id):
   try:
@@ -1084,23 +1061,65 @@ def generar_boletin(id):
 
 @estudiantes_bp.route('/descargar_boletin/<int:id>')
 def descargar_boletin(id):
+  import glob
   est = Estudiante.query.get_or_404(id)
   anio_actual = datetime.now().year
+  boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
 
-  # ⭐ Usar C.I. en el nombre del archivo
+  patron = os.path.join(boletines_dir, f"boletin_{est.id}_*.pdf")
+  archivos = glob.glob(patron)
+  if archivos:
+    filepath = max(archivos, key=os.path.getmtime)
+    filename = os.path.basename(filepath)
+    return send_file(filepath, as_attachment=True, download_name=filename)
+
   filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
-  filepath = os.path.join(os.getcwd(), 'static', 'boletines', filename)
-
-  if True: # Forzar regeneración con marca de agua
-    flash('El boletín no existe. Por favor, primero previsualícelo.', 'warning')
+  filepath = os.path.join(boletines_dir, filename)
+  try:
+    from utils.boletin_generator import generar_boletin_pdf
+    from models import Calificacion, Materia
+    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
+    materias = Materia.query.all()
+    bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=None)
+    os.makedirs(boletines_dir, exist_ok=True)
+    with open(filepath, 'wb') as f:
+      f.write(bytes_pdf)
+    return send_file(filepath, as_attachment=True, download_name=filename)
+  except Exception as e:
+    flash(f'Error al generar el boletín: {str(e)}', 'danger')
     return redirect(url_for('estudiantes.ver_boletin', id=id))
-
-  return send_file(filepath, as_attachment=True, download_name=filename)
 
 
 # ==============================================================================
 # BOLETINES POR CURSO
 # ==============================================================================
+
+
+# ==============================================================================
+# IMPRESIÓN DIRECTA DE CALIFICACIONES (CÁRDEX)
+# ==============================================================================
+@estudiantes_bp.route('/imprimir_boletin_directo/<int:id>')
+def imprimir_boletin_directo(id):
+    from models import Estudiante, Calificacion, Materia
+    from utils.boletin_generator import generar_boletin_pdf
+    from datetime import datetime
+    import io
+
+    est = Estudiante.query.get_or_404(id)
+    anio_actual = datetime.now().year
+
+    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
+    materias = Materia.query.all()
+    url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
+    
+    bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
+    
+    return send_file(
+        io.BytesIO(bytes_pdf),
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=f"Boletin_Oficial_{est.ci}_{anio_actual}.pdf"
+    )
 
 @estudiantes_bp.route('/boletines_curso/<curso>')
 def boletines_curso(curso):
