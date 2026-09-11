@@ -501,10 +501,14 @@ Cardex - {{ est.apellidos }}, {{ est.nombres }} - Colegio Dr. Antonio Vaca Díez
                             <td><strong>{{ item['nombre'] }}</strong></td>
 
                             <td>
-                                {% for n in item['notas'] %}
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex flex-wrap align-items-center gap-1">
+                                        {% for n in item['notas'] %}
                                     {% if n.valoracion_cualitativa %}
                                         <div class="p-2 mb-2 bg-light border-start border-4 border-success rounded">
-                                            <div class="fw-bold text-dark small">{{ n.tipo }}</div>
+                                            <div class="fw-bold text-dark small">{{ n.tipo }} <a href="{{ url_for('estudiantes.imprimir_calificaciones_detalle', id=est.id) }}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+    <i class="fas fa-print me-1"></i> Imprimir Calificaciones Oficiales
+</a></div>
                                             <span class="badge bg-success text-white px-2 py-1 mt-1">{{ n.valoracion_cualitativa }}</span>
                                         </div>
                                     {% elif n.informe_descriptivo %}
@@ -513,13 +517,29 @@ Cardex - {{ est.apellidos }}, {{ est.nombres }} - Colegio Dr. Antonio Vaca Díez
                                             <div class="text-dark fst-italic small mt-1">{{ n.informe_descriptivo }}</div>
                                         </div>
                                     {% elif n.nota != '-' %}
-                                        <div class="d-inline-block me-2 mb-2 border rounded p-2 text-center" style="min-width: 70px; background-color: #fff3e0; border-color: #e65100 !important;">
-                                            <small style="color: #e65100; font-size: 0.75rem;">{{ n.tipo }}</small>
-                                            <br>
-                                            <span class="fw-bold">{{ "%.1f"|format(n.nota) }}</span>
-                                        </div>
-                                    {% endif %}
+                                        {% set es_final = 'final' in n.tipo|lower or 'promedio' in n.tipo|lower %}
+                                        <div class="d-inline-flex flex-column justify-content-between align-items-center p-2 rounded shadow-sm text-center" 
+                                             style="min-width: 82px; 
+                                                    background: {{ '#ecfdf5' if es_final else '#f8fafc' }}; 
+                                                    border: 1px solid {{ '#10b981' if es_final else '#cbd5e1' }};">
+                                            <span class="text-uppercase fw-semibold" 
+                                                  style="font-size: 0.68rem; letter-spacing: 0.3px; color: {{ '#047857' if es_final else '#64748b' }};">
+                                                {{ n.tipo }}
+                                            </span>
+                                            <span class="fw-bold mt-1" 
+                                                  style="font-size: 1.05rem; color: {{ '#065f46' if es_final else '#1e293b' }};">
+                                                {{ "%.1f"|format(n.nota) if n.nota is number else n.nota }}
+                                            </span>
+                                        </div>{% endif %}
                                 {% endfor %}
+                                    </div>
+                                    <a href="{{ url_for('estudiantes.imprimir_calificaciones_detalle', id=est.id) }}" 
+                                       target="_blank" 
+                                       class="text-secondary text-decoration-none ms-3" 
+                                       title="Imprimir Calificaciones">
+                                        <i class="bi bi-printer-fill fs-5 text-primary"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}

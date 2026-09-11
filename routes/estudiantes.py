@@ -992,68 +992,45 @@ def ver_boletin(id):
     )
 @estudiantes_bp.route('/generar_boletin/<int:id>')
 def generar_boletin(id):
-  try:
-    from utils.boletin_generator import generar_boletin_pdf
-    import requests
-
-    est = Estudiante.query.get_or_404(id)
-
-    # ⭐ Búsqueda dual robusta por ID y por C.I.
-    calificaciones = Calificacion.query.filter(
-      or_(
-        Calificacion.estudiante_id == id,
-        Calificacion.ci_estudiante == est.ci
-      )
-    ).all()
-
-    materias = Materia.query.all()
-
-    if not calificaciones:
-      flash('⚠️ El estudiante no tiene calificaciones registradas', 'warning')
-      return redirect(url_for('estudiantes.ver_estudiante', id=id))
-
-    anio_actual = datetime.now().year
-
-    # Paso 1: Generar versión preliminar en memoria para extraer los bytes
-    bytes_temp = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=None)
-
-    # Paso 2: Subir automáticamente el PDF a Catbox.moe (Gratis, sin API keys ni registros)
-    url_catbox = ""
     try:
-      response = requests.post(
-        "https://catbox.moe/user/api.php",
-        data={'reqtype': 'fileupload'},
-        files={'fileToUpload': (f"boletin_{est.ci}.pdf", bytes_temp, 'application/pdf')}
-      )
-      if response.status_code == 200:
-        url_catbox = response.text.strip()
+        from utils.boletin_generator import generar_boletin_pdf
+        from models import Estudiante, Calificacion, Materia
+        from datetime import datetime
+
+        est = Estudiante.query.get_or_404(id)
+        anio_actual = datetime.now().year
+
+        calificaciones = Calificacion.query.filter(
+            or_(
+                Calificacion.estudiante_id == id,
+                Calificacion.ci_estudiante == est.ci
+            )
+        ).all()
+
+        materias = Materia.query.all()
+
+        if not calificaciones:
+            flash('⚠️ El estudiante no tiene calificaciones registradas', 'warning')
+            return redirect(url_for('estudiantes.ver_estudiante', id=id))
+
+        url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
+        bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
+
+        filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
+        boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
+        os.makedirs(boletines_dir, exist_ok=True)
+        filepath = os.path.join(boletines_dir, filename)
+
+        with open(filepath, 'wb') as f:
+            f.write(bytes_pdf)
+
+        flash('✅ Boletín generado exitosamente.', 'success')
+        return redirect(url_for('estudiantes.ver_boletin', id=id))
+
     except Exception as e:
-      print(f"Error al conectar con Catbox: {e}")
+        flash(f'❌ Error al generar el boletín: {str(e)}', 'danger')
+        return redirect(url_for('estudiantes.ver_estudiante', id=id))
 
-    # Respaldo de URL en caso de que falle temporalmente la red
-    if not url_catbox:
-      url_catbox = f"https://files.catbox.moe/error_red.pdf"
-
-    # Paso 3: Re-generar el PDF oficial incrustando el enlace permanente de Catbox en el QR
-    bytes_pdf_final = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_catbox)
-
-    # Paso 4: Guardar respaldo local usando el C.I.
-    filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
-
-    boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
-    os.makedirs(boletines_dir, exist_ok=True)
-
-    filepath = os.path.join(boletines_dir, filename)
-
-    with open(filepath, 'wb') as f:
-      f.write(bytes_pdf_final)
-
-    flash('✅ Boletín generado y vinculado a la nube exitosamente.', 'success')
-    return redirect(url_for('estudiantes.ver_boletin', id=id))
-
-  except Exception as e:
-    flash(f'❌ Error al generar el boletin: {str(e)}', 'danger')
-    return redirect(url_for('estudiantes.ver_estudiante', id=id))
 
 # ==============================================================================
 # DESCARGAR BOLETÍN PDF
@@ -1061,36 +1038,27 @@ def generar_boletin(id):
 
 @estudiantes_bp.route('/descargar_boletin/<int:id>')
 def descargar_boletin(id):
-  import glob
-  est = Estudiante.query.get_or_404(id)
-  anio_actual = datetime.now().year
-  boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
-
-  patron = os.path.join(boletines_dir, f"boletin_{est.id}_*.pdf")
-  archivos = glob.glob(patron)
-  if archivos:
-    filepath = max(archivos, key=os.path.getmtime)
-    filename = os.path.basename(filepath)
-    return send_file(filepath, as_attachment=True, download_name=filename)
-
-  filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
-  filepath = os.path.join(boletines_dir, filename)
-  try:
+    from models import Estudiante, Calificacion, Materia
     from utils.boletin_generator import generar_boletin_pdf
-    from models import Calificacion, Materia
-    calificaciones = Calificacion.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
-    materias = Materia.query.all()
-    bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=None)
+    from datetime import datetime
+    est = Estudiante.query.get_or_404(id)
+    anio_actual = datetime.now().year
+    boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
     os.makedirs(boletines_dir, exist_ok=True)
+    filename = f"boletin_{est.id}_{anio_actual}_{est.ci}.pdf"
+    filepath = os.path.join(boletines_dir, filename)
+
+    calificaciones = Calificacion.query.filter(
+        or_(Calificacion.estudiante_id == id, Calificacion.ci_estudiante == est.ci)
+    ).all()
+    materias = Materia.query.all()
+    url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&anio={anio_actual}"
+    bytes_pdf = generar_boletin_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
     with open(filepath, 'wb') as f:
-      f.write(bytes_pdf)
+        f.write(bytes_pdf)
     return send_file(filepath, as_attachment=True, download_name=filename)
-  except Exception as e:
-    flash(f'Error al generar el boletín: {str(e)}', 'danger')
-    return redirect(url_for('estudiantes.ver_boletin', id=id))
 
 
-# ==============================================================================
 # BOLETINES POR CURSO
 # ==============================================================================
 
@@ -1098,6 +1066,36 @@ def descargar_boletin(id):
 # ==============================================================================
 # IMPRESIÓN DIRECTA DE CALIFICACIONES (CÁRDEX)
 # ==============================================================================
+
+# ==============================================================================
+# IMPRIMIR REPORTE DETALLADO DE CALIFICACIONES (EVALUACIONES Y NOTAS REGISTRADAS)
+# ==============================================================================
+@estudiantes_bp.route('/imprimir_calificaciones_detalle/<int:id>')
+def imprimir_calificaciones_detalle(id):
+    from models import Estudiante, Calificacion, Materia
+    from utils.reporte_calificaciones_generator import generar_detalle_calificaciones_pdf
+    from datetime import datetime
+    import io
+
+    est = Estudiante.query.get_or_404(id)
+    calificaciones = Calificacion.query.filter(
+        or_(
+            Calificacion.estudiante_id == id,
+            Calificacion.ci_estudiante == est.ci
+        )
+    ).all()
+    materias = Materia.query.all()
+
+    url_verificacion = f"/calificaciones/verificar-boletin?ci={est.ci}&detalle=1"
+    pdf_bytes = generar_detalle_calificaciones_pdf(est, calificaciones, materias, cloudinary_url=url_verificacion)
+
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=f"Calificaciones_Detalle_{est.ci}.pdf"
+    )
+
 @estudiantes_bp.route('/imprimir_boletin_directo/<int:id>')
 def imprimir_boletin_directo(id):
     from models import Estudiante, Calificacion, Materia
