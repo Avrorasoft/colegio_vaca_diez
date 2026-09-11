@@ -624,7 +624,7 @@
         <div class="nav-link text-warning fw-bold px-3">
             <i class="bi bi-clock-history"></i> Turno: {{ session['turno_activo'] }}
         </div>
-        <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
+        <a class="nav-link text-danger" href="{{ url_for('global_logout') }}">
             <i class="bi bi-stop-circle"></i> Cerrar Turno
         </a>
         {% else %}
