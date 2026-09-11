@@ -9,3 +9,5 @@ static/uploads/
 static/recibos/
 static/boletines/
 logs/
+instance/*.db-shm
+instance/*.db-wal
