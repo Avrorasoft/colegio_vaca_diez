@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 
 <head>
@@ -624,7 +624,7 @@
         <div class="nav-link text-warning fw-bold px-3">
             <i class="bi bi-clock-history"></i> Turno: {{ session['turno_activo'] }}
         </div>
-        <a class="nav-link text-danger" href="{{ url_for('auth.logout') }}">
+        <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
             <i class="bi bi-stop-circle"></i> Cerrar Turno
         </a>
         {% else %}
@@ -679,7 +679,7 @@
 
         <div class="sidebar-separator"></div>
 
-        <a class="nav-link text-danger" href="/logout">
+        <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
             <i class="bi bi-box-arrow-left"></i>
             Cerrar Sesión
         </a>
