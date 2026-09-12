@@ -383,3 +383,90 @@ def eliminar_profesor(id):
         flash(f'❌ Error al eliminar el registro: {str(e)}', 'danger')
 
     return redirect(url_for('profesores.index'))
+
+# ==============================================================================
+# GESTIÓN Y DESGLOSE IMPRIMIBLE DE ADELANTOS POR DOCENTE
+# ==============================================================================
+@profesores_bp.route('/<int:id>/adelantos', methods=['GET'])
+def historial_adelantos(id):
+    profesor = Profesor.query.get_or_404(id)
+    meses_disponibles = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    
+    mes_actual_idx = datetime.now().month - 1
+    mes_default = meses_disponibles[mes_actual_idx]
+    
+    mes_filtro = request.args.get('mes', mes_default).capitalize()
+    anio_filtro = int(request.args.get('anio', datetime.now().year))
+
+    adelantos = PagoPersonal.query.filter(
+        PagoPersonal.tipo == 'Adelanto',
+        PagoPersonal.persona_id == id,
+        PagoPersonal.mes == mes_filtro,
+        PagoPersonal.anio == anio_filtro
+    ).order_by(PagoPersonal.fecha_pago.asc(), PagoPersonal.id.asc()).all()
+
+    total_mes = sum(float(a.monto_neto_pagado or 0.0) for a in adelantos)
+
+    return render_template(
+        'profesores/historial_adelantos.html',
+        profesor=profesor,
+        adelantos=adelantos,
+        mes_filtro=mes_filtro,
+        anio_filtro=anio_filtro,
+        meses_disponibles=meses_disponibles,
+        total_mes=total_mes
+    )
+
+
+@profesores_bp.route('/<int:id>/registrar-adelanto', methods=['POST'])
+def registrar_adelanto_profesor(id):
+    # Candado estricto de caja: requiere turno activo
+    turno_activo = session.get('turno_activo')
+    if not turno_activo or str(turno_activo).strip().lower() in ['none', '', 'false']:
+        flash('❌ ACCESO DENEGADO: Apertura de turno requerida. Nadie puede registrar ni desembolsar adelantos sin un turno de caja activo.', 'danger')
+        return redirect(url_for('auth.login_turno'))
+
+    profesor = Profesor.query.get_or_404(id)
+    
+    try:
+        monto = float(request.form.get('monto', 0.0))
+        if monto <= 0:
+            flash('⚠️ El monto del adelanto debe ser mayor a 0.', 'warning')
+            return redirect(url_for('profesores.historial_adelantos', id=id))
+    except ValueError:
+        flash('⚠️ Formato de monto inválido.', 'danger')
+        return redirect(url_for('profesores.historial_adelantos', id=id))
+
+    mes = request.form.get('mes', 'Septiembre').capitalize()
+    anio = datetime.now().year
+    motivo = request.form.get('motivo', 'Adelanto de Sueldo').strip() or 'Adelanto de Sueldo'
+
+    try:
+        nuevo_adelanto = PagoPersonal(
+            tipo='Adelanto',
+            persona_id=id,
+            ci_persona=profesor.ci,
+            nombre_persona=f"{profesor.apellidos}, {profesor.nombres}",
+            mes=mes,
+            anio=anio,
+            monto_base=monto,
+            monto_adelanto=0.0,
+            monto_neto_pagado=monto,
+            fecha_pago=datetime.now().date(),
+            metodo_pago='Efectivo',
+            motivo=motivo,
+            estado='Entregado'
+        )
+        db.session.add(nuevo_adelanto)
+
+        # Actualizar saldo acumulado en la ficha del docente
+        profesor.adelanto = float(profesor.adelanto or 0.0) + monto
+        profesor.salario_neto = max(0.0, float(profesor.salario_base or 0.0) - float(profesor.adelanto))
+
+        db.session.commit()
+        flash(f'✅ Adelanto de Bs. {monto:,.2f} registrado correctamente ({motivo}).', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Error al registrar adelanto: {str(e)}', 'danger')
+
+    return redirect(url_for('profesores.historial_adelantos', id=id, mes=mes))

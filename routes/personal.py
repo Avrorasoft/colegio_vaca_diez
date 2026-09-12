@@ -17,6 +17,8 @@ import io
 from datetime import datetime
 
 from flask import (
+    jsonify,
+    session,
     Blueprint,
     render_template,
     request,
@@ -844,6 +846,20 @@ def pagar_personal(tipo, id):
             flash('❌ Montos inválidos', 'danger')
             return redirect(url_for('personal.cardex_personal', tipo=tipo, id=id))
 
+        # CANDADO CONTABLE: Validar si el sueldo de este periodo ya fue liquidado
+        pago_previo = PagoPersonal.query.filter(
+            PagoPersonal.tipo.in_(['Profesor', 'Administrativo']),
+            PagoPersonal.persona_id == id,
+            PagoPersonal.mes == mes,
+            PagoPersonal.anio == anio,
+            PagoPersonal.estado == 'Pagado'
+        ).first()
+
+        if pago_previo:
+            fecha_reg = pago_previo.fecha_pago.strftime('%d/%m/%Y') if pago_previo.fecha_pago else 'fecha previa'
+            flash(f"❌ OPERACIÓN DENEGADA: El sueldo correspondiente a {mes} / {anio} ya fue liquidado y pagado el {fecha_reg} (Recibo N° {pago_previo.id}). No se permiten duplicados del mismo mes.", "danger")
+            return redirect(url_for('personal.cardex_personal', tipo=tipo, id=id))
+
         monto_neto = max(0.0, monto_base - adelanto)
 
         nuevo_pago = PagoPersonal(
@@ -855,7 +871,8 @@ def pagar_personal(tipo, id):
             monto_base=monto_base,
             monto_adelanto=adelanto,
             monto_neto_pagado=monto_neto,
-            fecha_pago=datetime.now().date()
+            fecha_pago=datetime.now().date(),
+            estado='Pagado'
         )
 
         db.session.add(nuevo_pago)
@@ -940,6 +957,12 @@ def pagar_personal(tipo, id):
 
 @personal_bp.route('/registrar_adelanto/<tipo>/<int:id>', methods=['GET', 'POST'])
 def registrar_adelanto(tipo, id):
+    # Candado estricto de caja: requiere turno activo
+    turno_activo = session.get('turno_activo')
+    if not turno_activo or str(turno_activo).strip().lower() in ['none', '', 'false']:
+        flash('❌ ACCESO DENEGADO: Debe iniciar un turno de caja para registrar y entregar adelantos de dinero.', 'danger')
+        return redirect(url_for('auth.login_turno'))
+
     if tipo == 'profesor':
         persona = Profesor.query.get_or_404(id)
         tipo_db = 'Profesor'
@@ -961,6 +984,7 @@ def registrar_adelanto(tipo, id):
         # Obtener el mes seleccionado del formulario
         mes_adelanto = request.form.get('mes', datetime.now().strftime('%B'))
         anio_adelanto = int(request.form.get('anio', datetime.now().year))
+        motivo_adelanto = request.form.get('motivo', 'Adelanto de Sueldo').strip() or 'Adelanto de Sueldo'
 
         nuevo_adelanto = PagoPersonal(
             tipo='Adelanto',
@@ -972,6 +996,7 @@ def registrar_adelanto(tipo, id):
             monto_adelanto=0.0,
             monto_neto_pagado=monto,
             fecha_pago=datetime.now().date(),
+            motivo=motivo_adelanto,
             estado='Pagado'
         )
         db.session.add(nuevo_adelanto)
@@ -1272,9 +1297,10 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
     red_style = ParagraphStyle('RedText', parent=normal_style, textColor=colors.red)
 
     for ad in adelantos_descontados:
+        motivo_txt = f"(-) Adelanto ({ad.motivo or 'Sueldo'})"
         pago_data.append([
-            Paragraph("(-) Adelanto", red_style),
-            Paragraph(ad.fecha_pago.strftime('%d/%m/%Y'), red_style),
+            Paragraph(motivo_txt, red_style),
+            Paragraph(ad.fecha_pago.strftime('%d/%m/%Y') if ad.fecha_pago else '-', red_style),
             Paragraph(f"- {ad.monto_neto_pagado:.2f}", red_style)
         ])
 
@@ -1488,9 +1514,9 @@ def generar_recibo_adelanto_pdf(pago, persona, tipo_db):
     cell_center = ParagraphStyle('CellCenter', parent=normal_style, fontSize=12, alignment=TA_CENTER)
 
     tabla_data = [[
-        Paragraph("<b>ADELANTO</b>", cell_center),
+        Paragraph("<b>MOTIVO / RAZÓN</b>", cell_center),
         Paragraph("<b>FECHA</b>", cell_center),
-        Paragraph("<b>CONCEPTO (MES)</b>", cell_center),
+        Paragraph("<b>PERIODO</b>", cell_center),
         Paragraph("<b>MONTO (Bs.)</b>", cell_center)
     ]]
 
@@ -1498,8 +1524,8 @@ def generar_recibo_adelanto_pdf(pago, persona, tipo_db):
     for ad in adelantos_mes:
         total_adelantos += ad.monto_neto_pagado or 0.0
         tabla_data.append([
-            Paragraph("Adelanto", cell_center),
-            Paragraph(ad.fecha_pago.strftime('%d/%m/%Y'), cell_center),
+            Paragraph(ad.motivo or 'Adelanto de Sueldo', cell_center),
+            Paragraph(ad.fecha_pago.strftime('%d/%m/%Y') if ad.fecha_pago else '-', cell_center),
             Paragraph(f"{ad.mes} / {ad.anio}", cell_center),
             Paragraph(f"{(ad.monto_neto_pagado or 0.0):.2f}", cell_center)
         ])
@@ -1544,3 +1570,36 @@ def generar_recibo_adelanto_pdf(pago, persona, tipo_db):
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
+
+
+@personal_bp.route('/api/adelantos_periodo/<tipo>/<int:id>', methods=['GET'])
+def api_adelantos_periodo(tipo, id):
+    mes = request.args.get('mes', '').strip()
+    try:
+        anio = int(request.args.get('anio', datetime.now().year))
+    except ValueError:
+        anio = datetime.now().year
+
+    adelantos = PagoPersonal.query.filter_by(
+        persona_id=id,
+        tipo='Adelanto',
+        mes=mes,
+        anio=anio
+    ).order_by(PagoPersonal.fecha_pago.desc(), PagoPersonal.id.desc()).all()
+
+    total = sum(float(a.monto_neto_pagado or 0.0) for a in adelantos)
+    detalle = []
+    for a in adelantos:
+        detalle.append({
+            'fecha': a.fecha_pago.strftime('%d/%m/%Y') if a.fecha_pago else '-',
+            'motivo': a.motivo or 'Adelanto de Sueldo',
+            'monto': float(a.monto_neto_pagado or 0.0)
+        })
+
+    return jsonify({
+        'status': 'success',
+        'mes': mes,
+        'anio': anio,
+        'total': total,
+        'detalle': detalle
+    })
