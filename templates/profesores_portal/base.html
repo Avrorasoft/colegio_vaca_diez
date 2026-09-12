@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -23,7 +23,7 @@
                 <span class="navbar-text text-white me-3">
                     {{ session.get('profesor_nombre', 'Profesor') }}
                 </span>
-                <a href="{{ url_for('global_logout') }}" class="btn btn-outline-light btn-sm">
+                <a href="{{ url_for('profesores_portal.logout') }}" class="btn btn-outline-light btn-sm">
                     <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
                 </a>
             </div>

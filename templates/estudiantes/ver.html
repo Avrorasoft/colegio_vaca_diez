@@ -1,4 +1,4 @@
-        
+﻿        
 {% extends "base.html" %}
 
 {% block title %}
@@ -244,7 +244,7 @@ Cardex - {{ est.apellidos }}, {{ est.nombres }} - Colegio Dr. Antonio Vaca Díez
         </form>
         {% else %}
         <form method="POST"
-              action="{{ url_for('global_logout') }}"
+              action="{{ url_for('auth.logout') }}"
               class="text-center mb-0">
 
             <button type="submit"
