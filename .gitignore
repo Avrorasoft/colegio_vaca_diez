@@ -13,3 +13,7 @@ instance/*.db-shm
 instance/*.db-wal
 
 *.avr
+
+static/recibos_personal/*.pdf
+*.db
+__pycache__/

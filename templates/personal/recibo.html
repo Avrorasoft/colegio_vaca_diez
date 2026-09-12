@@ -176,6 +176,7 @@
                 <thead class="table-dark text-center">
                     <tr>
                         <th class="py-2">Mes / Año</th>
+                        <th class="py-2">Detalle / Motivo</th>
                         <th class="py-2">Salario Base</th>
                         <th class="py-2">Desc. Adelanto</th>
                         <th class="py-2">Neto Pagado</th>
@@ -185,20 +186,21 @@
                     {% for p in pagos %}
                     <tr>
                         <td class="fw-bold">{{ p.mes }} {{ p.anio }}</td>
+                        <td><span class="badge bg-light text-dark border">{{ p.motivo or 'Liquidación de Sueldo' }}</span></td>
                         <td>Bs. {{ '%.2f'|format(p.monto_base or 0) }}</td>
                         <td class="text-danger">- Bs. {{ '%.2f'|format(p.monto_adelanto or 0) }}</td>
                         <td class="fw-bold">Bs. {{ '%.2f'|format(p.monto_neto_pagado or 0) }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="4" class="text-center text-muted py-4">No hay pagos registrados.</td>
+                        <td colspan="5" class="text-center text-muted py-4">No hay pagos registrados.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
                 {% if pagos %}
                 <tfoot>
                     <tr class="total-row">
-                        <td colspan="3" class="text-end pe-3">TOTAL NETO PAGADO:</td>
+                        <td colspan="4" class="text-end pe-3">TOTAL NETO PAGADO:</td>
                         <td class="text-center">Bs. {{ '%.2f'|format(pagos|sum(attribute='monto_neto_pagado')) }}</td>
                     </tr>
                 </tfoot>

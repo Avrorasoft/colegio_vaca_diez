@@ -127,7 +127,10 @@
                     <button onclick="window.print()" class="btn btn-light text-primary fw-bold me-2">
                         <i class="fas fa-print me-1"></i> Imprimir Cárdex
                     </button>
-                    <a href="{{ url_for('profesores.pagar_profesor', id=profesor.id) }}" class="btn btn-warning fw-bold me-2">
+                                        <a href="{{ url_for('profesores.historial_adelantos', id=profesor.id) }}" class="btn btn-outline-danger fw-bold me-2">
+                        <i class="fas fa-wallet me-1"></i> Adelantos e Historial
+                    </a>
+<a href="{{ url_for('profesores.pagar_profesor', id=profesor.id) }}" class="btn btn-warning fw-bold me-2">
                         <i class="fas fa-hand-holding-usd me-1"></i> Registrar Pago
                     </a>
                     <a href="{{ url_for('profesores.editar_profesor', id=profesor.id) }}" class="btn btn-outline-light me-2">

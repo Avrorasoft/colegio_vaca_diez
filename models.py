@@ -382,6 +382,7 @@ class PagoPersonal(db.Model):
     monto_base = db.Column(db.Float, nullable=False)
     monto_adelanto = db.Column(db.Float, default=0.0)
     monto_neto_pagado = db.Column(db.Float, nullable=False)
+    motivo = db.Column(db.String(200), default='Adelanto de Sueldo')
     fecha_pago = db.Column(db.Date, nullable=False)
     metodo_pago = db.Column(db.String(20), default='Efectivo')
     estado = db.Column(db.String(20), default='Pagado')
