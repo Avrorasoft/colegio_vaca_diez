@@ -80,6 +80,7 @@ def _obtener_clave(clave, valor_por_defecto='N/A'):
 
 try:
     from routes.auth import auth_bp
+    csrf.exempt(auth_bp)
     app.register_blueprint(auth_bp)
 except Exception as e:
     print(f"❌ Error auth: {e}")
@@ -273,6 +274,7 @@ if __name__ == '__main__':
             'setup',  # ⭐ Ruta de configuración inicial
             'api_estudiantes_por_curso',
             'portal_padres.',
+            'auth.',
             'pwa.',
         ]
 

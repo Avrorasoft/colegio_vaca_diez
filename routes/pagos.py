@@ -351,3 +351,61 @@ def generar_recibo_pago_pdf_simple(pago, estudiante, padre):
     doc.build(elements)
     buffer.seek(0)
     return buffer.getvalue()
+
+@pagos_bp.route('/reporte-deudores', methods=['GET'])
+def reporte_deudores():
+    from collections import defaultdict
+    meses_escolares = ["Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre"]
+    anio_actual = 2026
+
+    estudiantes = Estudiante.query.filter(
+        Estudiante.estado.in_(["Activo", "Inscrito"]) | Estudiante.estado.is_(None)
+    ).order_by(Estudiante.curso, Estudiante.apellidos, Estudiante.nombres).all()
+
+    deudores_por_curso = defaultdict(lambda: {"subtotal": 0.0, "alumnos": []})
+    gran_total = 0.0
+    total_deudores_conteo = 0
+
+    for est in estudiantes:
+        pension_base = float(est.pension or 0.0)
+        if pension_base <= 0:
+            continue
+
+        pagos_est = Pago.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
+        pagos_map = {p.mes.strip().capitalize(): p for p in pagos_est if p.mes}
+
+        meses_adeudados = []
+        deuda_estudiante = 0.0
+
+        for mes in meses_escolares:
+            if mes in pagos_map:
+                p = pagos_map[mes]
+                saldo_mes = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
+                if saldo_mes > 0:
+                    deuda_estudiante += saldo_mes
+                    meses_adeudados.append(f"{mes[:3]} (Bs.{saldo_mes:,.0f})")
+            else:
+                deuda_estudiante += pension_base
+                meses_adeudados.append(mes[:3])
+
+        if deuda_estudiante > 0:
+            curso_nom = est.curso or "Sin Curso Asignado"
+            deudores_por_curso[curso_nom]["subtotal"] += deuda_estudiante
+            deudores_por_curso[curso_nom]["alumnos"].append({
+                "estudiante": f"{est.apellidos}, {est.nombres}",
+                "ci": est.ci or "S/N",
+                "pension": pension_base,
+                "deuda": deuda_estudiante,
+                "cant_meses": len(meses_adeudados),
+                "detalle_meses": ", ".join(meses_adeudados)
+            })
+            gran_total += deuda_estudiante
+            total_deudores_conteo += 1
+
+    return render_template(
+        'pagos/reporte_deudores.html',
+        deudores_por_curso=dict(deudores_por_curso),
+        gran_total=gran_total,
+        total_alumnos_deudores=total_deudores_conteo,
+        anio_actual=anio_actual
+    )

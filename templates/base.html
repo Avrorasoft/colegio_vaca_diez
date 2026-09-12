@@ -588,6 +588,15 @@
             <i class="bi bi-mortarboard-fill"></i>
             Estudiantes
         </a>
+        <!-- MÓDULO DE PAGOS Y DEUDORES -->
+        <a class="nav-link" href="{{ url_for('pagos.index') }}">
+            <i class="bi bi-cash-stack"></i>
+            <span>Gestión de Pagos</span>
+        </a>
+        <a class="nav-link text-danger" href="{{ url_for('pagos.reporte_deudores') }}">
+            <i class="bi bi-exclamation-octagon-fill"></i>
+            <span>Deudores por Curso</span>
+        </a>
 
         <a class="nav-link" href="/personal/profesores">
             <i class="bi bi-person-workspace"></i>
