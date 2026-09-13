@@ -60,7 +60,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('auth.login') }}">
+        <form autocomplete="off" method="POST" action="{{ url_for('auth.login') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="mb-3">
                 <label for="username" class="form-label text-muted small fw-semibold">Usuario o Correo</label>

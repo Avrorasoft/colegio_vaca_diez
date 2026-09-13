@@ -102,7 +102,7 @@
             <strong>Primer Ingreso:</strong> Ingrese con su número de C.I. como usuario y la contraseña universal <strong>1234</strong>. Podrá personalizarla una vez dentro.
         </div>
 
-        <form method="POST" action="{{ url_for('pwa.login') }}">
+        <form autocomplete="off" method="POST" action="{{ url_for('pwa.login') }}">
             <div class="form-floating mb-3">
                 <input type="text" name="ci" class="form-control" id="inputCi" placeholder="Número de C.I." required autofocus>
                 <label for="inputCi"><i class="fas fa-id-card me-2"></i>Cédula de Identidad (C.I.)</label>

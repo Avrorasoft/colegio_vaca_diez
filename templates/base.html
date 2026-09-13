@@ -27,6 +27,13 @@
         body {
             background-color: #f1f5f9;
             font-family: Arial, Helvetica, sans-serif;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .main-content {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
         }
 
         .wrapper {
@@ -555,29 +562,31 @@
 
         <nav id="sidebar">
     <!-- LOGO Y NOMBRE DE LA INSTITUCIÓN -->
+        <!-- LOGO Y NOMBRE DE LA INSTITUCIÓN -->
     <div class="sidebar-brand">
-        {% if institucion and institucion.get('institucion_logo') %}
-        <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" 
-             alt="Logo" class="logo-img">
-        {% endif %}
+        {% set inst = institucion if institucion is defined and institucion else {} %}
+        {% set logo_file = inst.get('institucion_logo') or 'uploads/logo_institucion.png' %}
+        
+        <img src="{{ url_for('static', filename=logo_file) }}" 
+             alt="Logo Institucional" class="logo-img"
+             onerror="this.onerror=null; this.src='{{ url_for('static', filename='uploads/logo_institucion.png') }}';">
         
         <h5>
-            {{ institucion.get('institucion_linea1', 'Sistema') if institucion else 'Sistema' }}
+            {{ inst.get('institucion_linea1') or 'Colegio Dr. Antonio Vaca Díez' }}
         </h5>
-        {% if institucion and institucion.get('institucion_linea2') %}
+        
+        {% set linea2 = inst.get('institucion_linea2') or 'Riberalta - Beni' %}
         <div style="font-size: 11px; color: #94a3b8; line-height: 1.1;">
-            {{ institucion['institucion_linea2'] }}
+            {{ linea2 }}
         </div>
-        {% endif %}
-        {% if institucion and institucion.get('institucion_linea3') %}
+        
+        {% if inst.get('institucion_linea3') %}
         <div style="font-size: 10px; color: #64748b; line-height: 1.1;">
-            {{ institucion['institucion_linea3'] }}
+            {{ inst['institucion_linea3'] }}
         </div>
         {% endif %}
         <small>Avrora Soft - Vibola LLC</small>
-    </div>
-
-    <!-- ⭐ MENÚ COMPACTO SIN ETIQUETAS DE GRUPO -->
+    </div><!-- ⭐ MENÚ COMPACTO SIN ETIQUETAS DE GRUPO -->
     <div class="sidebar-menu">
         <a class="nav-link" href="/dashboard/">
             <i class="bi bi-speedometer2"></i>
@@ -837,3 +846,4 @@
 </body>
 
 </html>
+
