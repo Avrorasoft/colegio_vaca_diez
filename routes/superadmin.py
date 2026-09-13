@@ -434,7 +434,6 @@ def generar_avr():
         flash(f'❌ Error al generar proyecto .avr: {str(e)}', 'danger')
         return redirect(url_for('superadmin.boveda'))
 
-
 @superadmin_bp.route('/restaurar_avr', methods=['POST'])
 def restaurar_avr():
     if not check_superadmin():
@@ -442,8 +441,16 @@ def restaurar_avr():
 
     archivo = request.files.get('archivo_avr')
 
-    if not archivo or not archivo.filename.endswith('.avr'):
-        flash('❌ Formato inválido. Debe subir un archivo .avr oficial.', 'danger')
+    if not archivo or not archivo.filename:
+        flash('❌ No se seleccionó ningún archivo para restaurar.', 'danger')
+        return redirect(url_for('superadmin.boveda'))
+
+    filename = archivo.filename.lower()
+    is_db_file = filename.endswith('.db')
+    is_avr_file = filename.endswith('.avr')
+
+    if not (is_db_file or is_avr_file):
+        flash('❌ Formato inválido. Debe subir un archivo oficial .avr o una base de datos .db.', 'danger')
         return redirect(url_for('superadmin.boveda'))
 
     # Validar tamaño máximo (100MB)
@@ -451,13 +458,42 @@ def restaurar_avr():
     tamano = archivo.tell()
     archivo.seek(0)
     if tamano > 100 * 1024 * 1024:
-        flash('❌ El archivo .avr excede el tamaño máximo permitido (100MB).', 'danger')
+        flash('❌ El archivo excede el tamaño máximo permitido (100MB).', 'danger')
         return redirect(url_for('superadmin.boveda'))
+
+    db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    is_sqlite = 'sqlite:///' in db_uri
+    db_path = None
+
+    if is_sqlite:
+        db_path = db_uri.replace('sqlite:///', '')
+        if not os.path.isabs(db_path):
+            db_path = os.path.join(current_app.root_path, db_path)
 
     temp_avr = None
     dir_extraccion = None
 
     try:
+        # ⭐ LIBERACIÓN TOTAL Y FORZOSA DE CONEXIONES DE BASE DE DATOS EN WINDOWS
+        try:
+            db.session.remove()
+        except Exception:
+            pass
+        try:
+            db.engine.dispose()
+        except Exception:
+            pass
+
+        if is_db_file:
+            if not db_path:
+                flash('❌ No se pudo determinar la ruta de la base de datos SQLite.', 'danger')
+                return redirect(url_for('superadmin.boveda'))
+            
+            archivo.save(db_path)
+            flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) aplicada con éxito.', 'success')
+            return redirect(url_for('superadmin.boveda'))
+
+        # Proceso para archivos .avr
         temp_avr = os.path.join(
             tempfile.gettempdir(),
             f"upload_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
@@ -475,19 +511,11 @@ def restaurar_avr():
             for miembro in zipf.namelist():
                 if not _es_ruta_segura_zip(miembro, dir_extraccion):
                     raise ValueError(f"Archivo inseguro detectado en .avr: {miembro}")
-                # Limitar nombre de archivo
                 if len(miembro) > 255:
                     raise ValueError(f"Nombre de archivo demasiado largo: {miembro}")
             zipf.extractall(dir_extraccion)
 
-        db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-        is_sqlite = 'sqlite:///' in db_uri
-
         if is_sqlite:
-            db_path = db_uri.replace('sqlite:///', '')
-            if not os.path.isabs(db_path):
-                db_path = os.path.join(current_app.root_path, db_path)
-
             db_backup_encontrado = None
             sql_file_encontrado = os.path.join(dir_extraccion, "base_de_datos.sql")
 
@@ -500,12 +528,10 @@ def restaurar_avr():
                     break
 
             if db_backup_encontrado and db_path:
-                db.engine.dispose()
                 shutil.copyfile(db_backup_encontrado, db_path)
-                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada.', 'success')
+                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada desde .avr.', 'success')
 
             elif os.path.exists(sql_file_encontrado) and db_path:
-                db.engine.dispose()
                 db.drop_all()
                 db.create_all()
 
@@ -527,7 +553,7 @@ def restaurar_avr():
                 cursor_sqlite.close()
                 conexion_sqlite.close()
 
-                flash('✅ ¡SISTEMA RESTAURADO! Registros importados.', 'success')
+                flash('✅ ¡SISTEMA RESTAURADO! Registros SQL importados.', 'success')
             else:
                 flash('❌ El archivo .avr no contiene una base de datos compatible.', 'danger')
                 return redirect(url_for('superadmin.boveda'))
@@ -535,7 +561,6 @@ def restaurar_avr():
         else:
             sql_file = os.path.join(dir_extraccion, "base_de_datos.sql")
             if os.path.exists(sql_file):
-                db.engine.dispose()
                 conexion = db.engine.raw_connection()
                 cursor = conexion.cursor()
 
@@ -565,7 +590,7 @@ def restaurar_avr():
 
     except ValueError as ve:
         current_app.logger.error(f"🚨 Intento de path traversal: {ve}")
-        flash(f'🚫 Archivo .avr rechazado por seguridad: {str(ve)}', 'danger')
+        flash(f'🚫 Archivo rechazado por seguridad: {str(ve)}', 'danger')
     except Exception as e:
         current_app.logger.error(f"Error crítico restauración: {e}")
         flash(f'❌ Error crítico durante la restauración: {str(e)}', 'danger')
