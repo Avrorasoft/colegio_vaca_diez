@@ -24,8 +24,8 @@
         .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: center; font-size: 11px; color: #475569; margin-top: 45px; }
         .linea-firma { border-top: 1px dashed #64748b; padding-top: 5px; width: 85%; margin: 0 auto; }
         .no-print { text-align: center; margin-bottom: 20px; }
-        .btn-print { background: #0284c7; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 5px; cursor: pointer; }
-        @media print { .no-print { display: none; } body { padding: 0; } .comprobante { border: 1px solid #000; box-shadow: none; padding: 15px; } }
+        .btn-print { background: #0284c7; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        @media print { .no-print { display: none !important; } body { padding: 0; } .comprobante { border: 1px solid #000; box-shadow: none; padding: 15px; } }
     </style>
 </head>
 <body>
@@ -36,7 +36,7 @@
 
     <div class="no-print">
         <button class="btn-print" onclick="window.print()">🖨️ Imprimir Recibo Oficial</button>
-        <button class="btn-print" style="background:#64748b; margin-left: 10px;" onclick="window.close()">Cerrar</button>
+        <a href="{{ url_for('estudiantes.ver_estudiante', id=est.id) }}" class="btn-print" style="background:#64748b; margin-left: 10px;">Volver al Cárdex</a>
     </div>
 
     <div class="comprobante">
@@ -58,7 +58,7 @@
                 <span class="label" style="margin-top: 8px;">Curso / Grado</span>
                 <span class="valor">{{ est.curso or 'No asignado' }}</span>
                 <span class="label" style="margin-top: 8px;">Tutor / Apoderado</span>
-                <span class="valor">{{ padre.nombre if padre else 'No registrado' }}</span>
+                <span class="valor">{{ padre.nombres if padre else 'No registrado' }}</span>
             </div>
             <div>
                 <span class="label">Fecha y Hora de Recaudación</span>
@@ -92,9 +92,9 @@
             <tbody>
                 <tr>
                     <td>
-                        <strong>{{ pago.concepto or 'Pensión Escolar' }}</strong>
-                        {% if pago.observacion %}
-                        <br><small style="color: #64748b;">Obs: {{ pago.observacion }}</small>
+                        <strong>{{ pago.tipo_concepto or 'Pensión' }}</strong>
+                        {% if pago.detalle_concepto %}
+                        <br><small style="color: #64748b;">{{ pago.detalle_concepto }}</small>
                         {% endif %}
                     </td>
                     <td style="text-align: center;">{{ pago.mes or '-' }} / {{ pago.anio or '-' }}</td>

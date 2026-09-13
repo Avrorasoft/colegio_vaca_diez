@@ -509,158 +509,165 @@ def archivar_como_egresado(id):
 
 @estudiantes_bp.route('/pagar/<int:id>', methods=['GET', 'POST'])
 def pagar_estudiante(id):
-  turno_en_caja = session.get('turno_activo') or session.get('turno_id') or session.get('caja_activa')
-  rol_usuario = str(session.get('rol', '')).lower().strip()
-  es_admin = rol_usuario in ['admin', 'superadmin', 'administrador']
+    turno_en_caja = session.get('turno_activo') or session.get('turno_id') or session.get('caja_activa')
+    rol_usuario = str(session.get('rol', '')).lower().strip()
+    es_admin = rol_usuario in ['admin', 'superadmin', 'administrador']
 
-  if not turno_en_caja and not es_admin:
-    flash('❌ Cobro bloqueado: No existe un turno de caja activo. Debe iniciar turno.', 'danger')
-    return redirect(url_for('auth.login_turno'))
+    if not turno_en_caja and not es_admin:
+        flash('❌ Cobro bloqueado: No existe un turno de caja activo. Debe iniciar turno.', 'danger')
+        return redirect(url_for('auth.login_turno'))
 
-  est = Estudiante.query.get_or_404(id)
-  padre = Padre.query.filter_by(estudiante_id=id).first()
-  anio_actual = datetime.now().year
+    est = Estudiante.query.get_or_404(id)
+    padre = Padre.query.filter_by(estudiante_id=id).first()
+    anio_actual = datetime.now().year
 
-  meses_todos = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ]
+    meses_todos = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ]
 
-  monto_mensual = float(est.pension) if est.pension else 0.0
+    monto_mensual = float(est.pension) if est.pension else 0.0
 
-  if request.method == 'POST':
-    accion_cobro = request.form.get('accion_cobro', 'pension')
+    if request.method == 'POST':
+        accion_cobro = request.form.get('accion_cobro', 'pension')
 
-    # ⭐ COBRO DE OTROS CONCEPTOS (Inscripción, Poleras, Snack, Actividades)
-    if accion_cobro == 'otro_concepto':
-      tipo_concepto = request.form.get('tipo_concepto', 'Otro').strip()
-      detalle_concepto = request.form.get('detalle_concepto', '').strip()
-      monto_abono_str = request.form.get('monto_abono', '0').strip()
-      metodo_pago = request.form.get('metodo_pago', 'Efectivo').strip()
-      if metodo_pago not in ['Efectivo', 'Bancario']:
-        metodo_pago = 'Efectivo'
+        # ⭐ COBRO DE OTROS CONCEPTOS (Inscripción, Poleras, Snack, Actividades)
+        if accion_cobro == 'otro_concepto':
+            tipo_concepto = request.form.get('tipo_concepto', 'Otro').strip()
+            detalle_concepto = request.form.get('detalle_concepto', '').strip()
+            monto_abono_str = request.form.get('monto_abono', '0').strip()
+            metodo_pago = request.form.get('metodo_pago', 'Efectivo').strip()
+            if metodo_pago not in ['Efectivo', 'Bancario']:
+                metodo_pago = 'Efectivo'
 
-      try:
-        monto_abono = float(monto_abono_str)
-      except ValueError:
-        flash('❌ Ingrese un monto válido.', 'danger')
-        return redirect(url_for('estudiantes.pagar_estudiante', id=id))
+            try:
+                monto_abono = float(monto_abono_str)
+            except ValueError:
+                flash('❌ Ingrese un monto válido.', 'danger')
+                return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-      responsable_turno = (session.get('turno_activo') or session.get('turno') or 'Caja Central')
+            responsable_turno = (session.get('turno_activo') or session.get('turno') or 'Caja Central')
 
-      try:
-        nuevo_pago = Pago(
-          estudiante_id=id,
-          ci_estudiante=est.ci,
-          rude_estudiante=est.rude,
-          mes=datetime.now().strftime('%B'),
-          anio=anio_actual,
-          monto_total=monto_abono,
-          descuento=0.0,
-          monto_pagado=monto_abono,
-          fecha_pago=datetime.now(),
-          estado='Pagado',
-          metodo_pago=metodo_pago,
-          turno_responsable=responsable_turno,
-          tipo_concepto=tipo_concepto,
-          detalle_concepto=detalle_concepto
-        )
-        db.session.add(nuevo_pago)
-        db.session.commit()
-        flash(f'✅ Cobro de {tipo_concepto} (Bs. {monto_abono:.2f}) registrado con éxito.', 'success')
-        return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=nuevo_pago.id))
-      except Exception as e:
-        db.session.rollback()
-        flash(f'❌ Error al registrar el cobro: {str(e)}', 'danger')
-        return redirect(url_for('estudiantes.pagar_estudiante', id=id))
+            try:
+                nuevo_pago = Pago(
+                    estudiante_id=id,
+                    ci_estudiante=est.ci,
+                    rude_estudiante=est.rude,
+                    mes=datetime.now().strftime('%B'),
+                    anio=anio_actual,
+                    monto_total=monto_abono,
+                    descuento=0.0,
+                    monto_pagado=monto_abono,
+                    fecha_pago=datetime.now(),
+                    estado='Pagado',
+                    metodo_pago=metodo_pago,
+                    turno_responsable=responsable_turno,
+                    tipo_concepto=tipo_concepto,
+                    detalle_concepto=detalle_concepto
+                )
+                db.session.add(nuevo_pago)
+                db.session.commit()
+                flash(f'✅ Cobro de {tipo_concepto} (Bs. {monto_abono:.2f}) registrado con éxito.', 'success')
+                return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=nuevo_pago.id))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'❌ Error al registrar el cobro: {str(e)}', 'danger')
+                return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-    # ⭐ COBRO DE PENSIÓN MENSUAL Y ABONOS PARCIALES
-    mes_a_pagar = request.form.get('mes_a_pagar', '').strip()
-    monto_abono_str = request.form.get('monto_abono', '0').strip()
-    descuento_str = request.form.get('descuento', '0').strip()
-    metodo_pago = request.form.get('metodo_pago', 'Efectivo').strip()
-    if metodo_pago not in ['Efectivo', 'Bancario']:
-      metodo_pago = 'Efectivo'
+        # ⭐ COBRO DE PENSIÓN MENSUAL Y ABONOS PARCIALES
+        mes_a_pagar = request.form.get('mes_a_pagar', '').strip()
+        monto_abono_str = request.form.get('monto_abono', '0').strip()
+        descuento_str = request.form.get('descuento', '0').strip()
+        metodo_pago = request.form.get('metodo_pago', 'Efectivo').strip()
+        if metodo_pago not in ['Efectivo', 'Bancario']:
+            metodo_pago = 'Efectivo'
 
-    try:
-      monto_abono = float(monto_abono_str)
-      descuento = float(descuento_str) if descuento_str else 0.0
-    except ValueError:
-      flash('❌ Ingrese montos válidos.', 'danger')
-      return redirect(url_for('estudiantes.pagar_estudiante', id=id))
+        try:
+            monto_abono = float(monto_abono_str)
+            descuento = float(descuento_str) if descuento_str else 0.0
+        except ValueError:
+            flash('❌ Ingrese montos válidos.', 'danger')
+            return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-    pagos_previos = Pago.query.filter_by(
-      estudiante_id=id, anio=anio_actual, mes=mes_a_pagar, tipo_concepto='Pensión'
-    ).all()
+        pagos_previos = Pago.query.filter_by(
+            estudiante_id=id, anio=anio_actual, mes=mes_a_pagar, tipo_concepto='Pensión'
+        ).all()
 
-    abonado_previo = sum(float(p.monto_pagado or 0.0) for p in pagos_previos)
-    descuento_previo = sum(float(p.descuento or 0.0) for p in pagos_previos)
-    nuevo_descuento_total = descuento_previo + descuento
-    costo_neto = max(0.0, monto_mensual - nuevo_descuento_total)
-    saldo_restante_previo = max(0.0, costo_neto - abonado_previo)
+        abonado_previo = sum(float(p.monto_pagado or 0.0) for p in pagos_previos)
+        descuento_previo = sum(float(p.descuento or 0.0) for p in pagos_previos)
+        nuevo_descuento_total = descuento_previo + descuento
+        costo_neto = max(0.0, monto_mensual - nuevo_descuento_total)
+        saldo_restante_previo = max(0.0, costo_neto - abonado_previo)
 
-    if monto_abono > (saldo_restante_previo + 0.01):
-      flash(f'⚠️ El monto (Bs. {monto_abono:.2f}) excede el saldo pendiente (Bs. {saldo_restante_previo:.2f}).', 'warning')
-      return redirect(url_for('estudiantes.pagar_estudiante', id=id))
+        if monto_abono > (saldo_restante_previo + 0.01):
+            flash(f'⚠️ El monto (Bs. {monto_abono:.2f}) excede el saldo pendiente (Bs. {saldo_restante_previo:.2f}).', 'warning')
+            return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-    nuevo_total_abonado = abonado_previo + monto_abono
-    nuevo_saldo_final = max(0.0, costo_neto - nuevo_total_abonado)
-    estado_pago = 'Pagado' if nuevo_saldo_final <= 0.01 else 'Abono'
+        nuevo_total_abonado = abonado_previo + monto_abono
+        nuevo_saldo_final = max(0.0, costo_neto - nuevo_total_abonado)
+        estado_pago = 'Pagado' if nuevo_saldo_final <= 0.01 else 'Abono'
 
-    responsable_turno = (session.get('turno_activo') or session.get('turno') or 'Caja Central')
+        responsable_turno = (session.get('turno_activo') or session.get('turno') or 'Caja Central')
 
-    try:
-      pago_deposito = Pago(
-        estudiante_id=id, ci_estudiante=est.ci, rude_estudiante=est.rude,
-        mes=mes_a_pagar, anio=anio_actual, monto_total=monto_mensual,
-        descuento=descuento, monto_pagado=monto_abono, fecha_pago=datetime.now(),
-        estado=estado_pago, metodo_pago=metodo_pago, turno_responsable=responsable_turno,
-        tipo_concepto='Pensión', detalle_concepto=f'Pensión {mes_a_pagar}'
-      )
-      db.session.add(pago_deposito)
+        try:
+            pago_deposito = Pago(
+                estudiante_id=id, ci_estudiante=est.ci, rude_estudiante=est.rude,
+                mes=mes_a_pagar, anio=anio_actual, monto_total=monto_mensual,
+                descuento=descuento, monto_pagado=monto_abono, fecha_pago=datetime.now(),
+                estado=estado_pago, metodo_pago=metodo_pago, turno_responsable=responsable_turno,
+                tipo_concepto='Pensión', detalle_concepto=f'Pensión {mes_a_pagar}'
+            )
+            db.session.add(pago_deposito)
 
-      if estado_pago == 'Pagado':
-        for p in pagos_previos:
-          p.estado = 'Pagado'
+            if estado_pago == 'Pagado':
+                for p in pagos_previos:
+                    p.estado = 'Pagado'
 
-      db.session.commit()
-      flash(f'✅ Depósito de Bs. {monto_abono:.2f} registrado para {mes_a_pagar}.', 'success')
-      return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=pago_deposito.id))
-    except Exception as e:
-      db.session.rollback()
-      flash(f'❌ Error: {str(e)}', 'danger')
-      return redirect(url_for('estudiantes.ver_estudiante', id=id))
+            db.session.commit()
+            flash(f'✅ Depósito de Bs. {monto_abono:.2f} registrado para {mes_a_pagar}.', 'success')
+            return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=pago_deposito.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error: {str(e)}', 'danger')
+            return redirect(url_for('estudiantes.ver_estudiante', id=id))
 
-  # ⭐ CÁLCULO DE SALDOS PARA LA VISTA
-  estado_meses = []
-  for mes in meses_todos:
-    # Buscamos todos los pagos de pensión realizados para este mes y año
-    pagos_mes = Pago.query.filter_by(
-      estudiante_id=id, 
-      anio=anio_actual, 
-      mes=mes, 
-      tipo_concepto='Pensión'
-    ).all()
+    # ⭐ CÁLCULO DE SALDOS PARA LA VISTA (PETICIÓN GET)
+    estado_meses = []
+    for mes in meses_todos:
+        pagos_mes = Pago.query.filter_by(
+            estudiante_id=id,
+            anio=anio_actual,
+            mes=mes,
+            tipo_concepto='Pensión'
+        ).all()
 
-    total_abonado = sum(float(p.monto_pagado or 0.0) for p in pagos_mes)
-    descuento_mes = sum(float(p.descuento or 0.0) for p in pagos_mes)
-    costo_efectivo = max(0.0, monto_mensual - descuento_mes)
-    saldo_pendiente = max(0.0, costo_efectivo - total_abonado)
+        total_abonado = sum(float(p.monto_pagado or 0.0) for p in pagos_mes)
+        descuento_mes = sum(float(p.descuento or 0.0) for p in pagos_mes)
+        costo_efectivo = max(0.0, monto_mensual - descuento_mes)
+        saldo_pendiente = max(0.0, costo_efectivo - total_abonado)
 
-    if saldo_pendiente <= 0.0 and total_abonado > 0.0:
-      estado = 'Cancelado'
-    elif total_abonado > 0.0:
-      estado = 'Abono Parcial'
-    else:
-      estado = 'Pendiente'
+        if saldo_pendiente <= 0.0 and total_abonado > 0.0:
+            estado = 'Cancelado'
+        elif total_abonado > 0.0:
+            estado = 'Abono Parcial'
+        else:
+            estado = 'Pendiente'
 
-    estado_meses.append({
-      'mes': mes, 
-      'costo': monto_mensual, 
-      'abonado': total_abonado,
-      'saldo': saldo_pendiente, 
-      'estado': estado
-    })
+        estado_meses.append({
+            'mes': mes,
+            'costo': monto_mensual,
+            'abonado': total_abonado,
+            'saldo': saldo_pendiente,
+            'estado': estado
+        })
+
+    return render_template(
+        'estudiantes/pagar.html',
+        est=est,
+        padre=padre,
+        estado_meses=estado_meses,
+        anio_actual=anio_actual
+    )
 
 
 # ==============================================================================
