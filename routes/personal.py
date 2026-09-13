@@ -574,7 +574,6 @@ def pagos_personal():
 @personal_bp.route('/registrar_pago', methods=['POST'])
 def registrar_pago():
     # 1. VALIDACIÓN ESTRICTA DE CAJA/TURNO
-    # Utilizamos la variable 'turno_activo' que es la llave maestra correcta en tu sistema
     turno_activo = session.get('turno_activo')
     if not turno_activo or str(turno_activo).strip().lower() in ['none', '', 'false']:
         flash('❌ ACCESO DENEGADO: Apertura de Turno requerida. Nadie puede registrar pagos de sueldo sin un turno de caja activo.', 'danger')
@@ -642,7 +641,8 @@ def registrar_pago():
         monto_base=monto_base,
         monto_adelanto=monto_adelanto,
         monto_neto_pagado=monto_neto_pagado,
-        fecha_pago=datetime.now().date()
+        fecha_pago=datetime.now().date(),
+        estado='Pagado'
     )
 
     db.session.add(nuevo_pago)
@@ -684,9 +684,9 @@ def cardex_personal(tipo, id):
         materias_disponibles = []
         tipo_db = 'Administrativo'
 
-    pagos = PagoPersonal.query.filter_by(
-        persona_id=id,
-        tipo=tipo_db
+    pagos = PagoPersonal.query.filter(
+        PagoPersonal.persona_id == id,
+        PagoPersonal.tipo.in_([tipo_db, 'Adelanto'])
     ).order_by(PagoPersonal.fecha_pago.desc()).all()
 
     return render_template(
@@ -916,29 +916,38 @@ def pagar_personal(tipo, id):
             flash('✅ Pago registrado, pero hubo un error al generar el recibo.', 'warning')
             return redirect(url_for('personal.cardex_personal', tipo=tipo, id=id))
 
-    # Obtener el mes actual para filtrar adelantos
-    MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-    mes_actual = MESES_ES[datetime.now().month - 1]
-    anio_actual_calc = datetime.now().year
+    # Obtener el mes y año seleccionados de los parámetros GET (si se envían desde el formulario de pago), o usar el actual
+    mes = request.args.get('mes')
+    anio = request.args.get('anio')
 
-    # Calcular total de adelantos pendientes SOLO del mes actual
+    MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+                 
+    if not mes or mes not in MESES_ES:
+        mes = MESES_ES[datetime.now().month - 1]
+    
+    try:
+        anio_actual_calc = int(anio) if anio else datetime.now().year
+    except ValueError:
+        anio_actual_calc = datetime.now().year
+
+    # Calcular total de adelantos pendientes del mes y año específicos seleccionados
     total_adelantos = db.session.query(
         db.func.coalesce(db.func.sum(PagoPersonal.monto_neto_pagado), 0.0)
     ).filter(
         PagoPersonal.persona_id == id,
         PagoPersonal.tipo == 'Adelanto',
-        PagoPersonal.mes == mes_actual,
+        PagoPersonal.mes == mes,
         PagoPersonal.anio == anio_actual_calc
     ).scalar() or 0.0
 
     total_adelantos = float(total_adelantos)
 
-    # Lista de adelantos registrados SOLO del mes actual
+    # Lista de adelantos registrados del mes y año específicos seleccionados
     adelantos_detalle = PagoPersonal.query.filter_by(
         persona_id=id,
         tipo='Adelanto',
-        mes=mes_actual,
+        mes=mes,
         anio=anio_actual_calc
     ).order_by(PagoPersonal.fecha_pago.desc()).limit(10).all()
 
@@ -948,6 +957,8 @@ def pagar_personal(tipo, id):
         tipo=tipo,
         total_adelantos=total_adelantos,
         adelantos_detalle=adelantos_detalle,
+        mes_seleccionado=mes,
+        anio_seleccionado=anio_actual_calc,
         anio_actual=datetime.now().year
     )
 

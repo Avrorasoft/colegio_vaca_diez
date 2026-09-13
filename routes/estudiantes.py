@@ -634,7 +634,14 @@ def pagar_estudiante(id):
   # ⭐ CÁLCULO DE SALDOS PARA LA VISTA
   estado_meses = []
   for mes in meses_todos:
-    pagos_mes = Pago.query.filter_by(estudiante_id=id, anio=anio_actual, mes=mes, tipo_concepto='Pensión').all()
+    # Buscamos todos los pagos de pensión realizados para este mes y año
+    pagos_mes = Pago.query.filter_by(
+      estudiante_id=id, 
+      anio=anio_actual, 
+      mes=mes, 
+      tipo_concepto='Pensión'
+    ).all()
+
     total_abonado = sum(float(p.monto_pagado or 0.0) for p in pagos_mes)
     descuento_mes = sum(float(p.descuento or 0.0) for p in pagos_mes)
     costo_efectivo = max(0.0, monto_mensual - descuento_mes)
@@ -648,14 +655,12 @@ def pagar_estudiante(id):
       estado = 'Pendiente'
 
     estado_meses.append({
-      'mes': mes, 'costo': monto_mensual, 'abonado': total_abonado,
-      'saldo': saldo_pendiente, 'estado': estado
+      'mes': mes, 
+      'costo': monto_mensual, 
+      'abonado': total_abonado,
+      'saldo': saldo_pendiente, 
+      'estado': estado
     })
-
-  return render_template(
-    'estudiantes/pagar.html', est=est, padre=padre,
-    estado_meses=estado_meses, anio=anio_actual
-  )
 
 
 # ==============================================================================
@@ -1707,12 +1712,6 @@ def ver_cardex_egresado(id):
     resumen=resumen,
     promedio_general=promedio_general
   )
-
-
-
-
-
-
 
 @estudiantes_bp.route('/estudiantes/<int:id>/imprimir_materia/<path:materia_nombre>')
 def imprimir_materia_individual(id, materia_nombre):
