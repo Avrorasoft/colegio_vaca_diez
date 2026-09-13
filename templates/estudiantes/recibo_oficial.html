@@ -41,7 +41,6 @@
                 <p class="mb-1"><strong>N° de Recibo:</strong> <span class="text-primary">{{ recibo_filename.replace('.pdf', '').replace('recibo_', 'REC-') if recibo_filename else 'N/A' }}</span></p>
             </div>
             <div class="col-md-6 text-md-end">
-                <!-- ✅ CORRECCIÓN: now() con paréntesis -->
                 <p class="mb-1"><strong>Fecha:</strong> {{ now().strftime('%d/%m/%Y') }}</p>
             </div>
         </div>
@@ -66,13 +65,31 @@
                 {% if pagos %}
                 <table class="table table-bordered mb-0 align-middle">
                     <thead class="table-dark text-white text-center">
-                        <tr><th class="py-2">Mes</th><th class="py-2">Año</th><th class="py-2">Monto Total</th><th class="py-2">Descuento</th><th class="py-2">Monto Pagado</th></tr>
+                        <tr>
+                            <th class="py-2">Concepto / Rubro</th>
+                            <th class="py-2">Mes / Período</th>
+                            <th class="py-2">Monto Total</th>
+                            <th class="py-2">Descuento</th>
+                            <th class="py-2">Monto Pagado</th>
+                        </tr>
                     </thead>
                     <tbody class="text-center">
                         {% for p in pagos %}
                         <tr>
-                            <td>{{ p.mes }}</td>
-                            <td>{{ p.anio }}</td>
+                            <td class="text-start ps-3">
+                                {% if p.tipo_concepto and p.tipo_concepto != 'Pensión' %}
+                                    <span class="fw-bold text-primary">{{ p.tipo_concepto }}</span>
+                                    {% if p.detalle_concepto %}
+                                        <br><small class="text-muted">{{ p.detalle_concepto }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    <span>Pensión Mensual</span>
+                                    {% if p.estado == 'Abono' %}
+                                        <br><span class="badge bg-warning text-dark">Abono Parcial</span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                            <td>{{ p.mes }} ({{ p.anio }})</td>
                             <td>Bs. {{ "%.2f"|format(p.monto_total) }}</td>
                             <td>Bs. {{ "%.2f"|format(p.descuento or 0) }}</td>
                             <td class="fw-bold text-success">Bs. {{ "%.2f"|format(p.monto_pagado) }}</td>
@@ -102,7 +119,6 @@
         <div class="mt-5 pt-3 border-top text-center">
             <p class="small text-muted mb-0 fst-italic">
                 Este documento es un comprobante oficial de pago.<br>
-                <!-- ✅ CORRECCIÓN: now() con paréntesis -->
                 Generado el {{ now().strftime('%d/%m/%Y a las %H:%M') }} por el Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez.
             </p>
         </div>

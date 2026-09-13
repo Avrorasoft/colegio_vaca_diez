@@ -416,6 +416,8 @@ class Pago(db.Model):
     estado = db.Column(db.String(20), default='Pendiente')
     metodo_pago = db.Column(db.String(20), default='Efectivo')
     turno_responsable = db.Column(db.String(20), nullable=False, default='Mañana')
+    tipo_concepto = db.Column(db.String(50), default='Pensión')
+    detalle_concepto = db.Column(db.String(150), default='')
 
     def __repr__(self):
         return f"<Pago - CI:{self.ci_estudiante} Turno:{self.turno_responsable} {self.mes}/{self.anio}>"
