@@ -764,3 +764,10 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA synchronous = NORMAL;")
     cursor.execute("PRAGMA busy_timeout = 5000;")
     cursor.close()
+class ConfiguracionInstitucion(db.Model):
+    __tablename__ = 'configuracion_institucion'
+    id = db.Column(db.Integer, primary_key=True)
+    institucion_linea1 = db.Column(db.String(150), default='Sistema de Gestión Escolar')
+    institucion_linea2 = db.Column(db.String(150), default='')
+    institucion_linea3 = db.Column(db.String(150), default='')
+    institucion_logo = db.Column(db.String(255), default='uploads/logo_institucion.png')
