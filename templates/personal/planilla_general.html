@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 no-print">
         <div>
             <h3 class="fw-bold text-primary mb-0"><i class="bi bi-file-earmark-spreadsheet-fill"></i> Planilla General Consolidada</h3>
             <p class="text-muted mb-0">Colegio Dr. Antonio Vaca Díez - Gestión {{ anio_actual }}</p>
@@ -18,34 +18,41 @@
         </div>
     </div>
 
+    <!-- ENCABEZADO INSTITUCIONAL PARA IMPRESIÓN -->
+    <div class="print-header text-center mb-3">
+        <h5 class="fw-bold mb-1">COLEGIO DR. ANTONIO VACA DÍEZ</h5>
+        <p class="text-muted mb-0 small">Dirección Administrativa y Financiera - Riberalta, Beni, Bolivia</p>
+        <h6 class="fw-bold text-dark mt-1">PLANILLA GENERAL CONSOLIDADA DE SUELDOS - GESTIÓN {{ anio_actual }}</h6>
+    </div>
+
     <!-- SECCIÓN 1: PROFESORES -->
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="bi bi-mortarboard-fill"></i> Personal Docente (Profesores)</h5>
+        <div class="card-header bg-primary text-white py-2">
+            <h5 class="mb-0 fs-6"><i class="bi bi-mortarboard-fill"></i> Personal Docente (Profesores)</h5>
         </div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped mb-0 align-middle">
-                <thead class="table-light">
+                <thead class="table-light text-center">
                     <tr>
-                        <th>N°</th>
-                        <th>Apellidos y Nombres</th>
-                        <th>C.I.</th>
-                        <th>Especialidad / Turno</th>
-                        <th>Salario Base</th>
-                        <th>Adelantos</th>
-                        <th>Líquido Pagable</th>
+                        <th style="width: 5%;">N°</th>
+                        <th style="width: 25%;">Apellidos y Nombres</th>
+                        <th style="width: 12%;">C.I.</th>
+                        <th style="width: 20%;">Especialidad / Turno</th>
+                        <th style="width: 13%;">Salario Base</th>
+                        <th style="width: 13%;">Adelantos</th>
+                        <th style="width: 12%;">Líquido</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for p in profesores %}
                     <tr>
-                        <td>{{ loop.index }}</td>
+                        <td class="text-center">{{ loop.index }}</td>
                         <td class="fw-bold">{{ p.apellidos }}, {{ p.nombres }}</td>
                         <td>{{ p.ci or 'S/N' }}</td>
                         <td>{{ p.especialidad or 'General' }} ({{ p.turno or 'Mañana' }})</td>
-                        <td>Bs. {{ '%.2f'|format(p.salario_base or 0) }}</td>
-                        <td class="text-danger">Bs. {{ '%.2f'|format(p.adelanto or 0) }}</td>
-                        <td class="text-success fw-bold">Bs. {{ '%.2f'|format(p.salario_neto or 0) }}</td>
+                        <td class="text-end">Bs. {{ '%.2f'|format(p.salario_base or 0) }}</td>
+                        <td class="text-end text-danger">Bs. {{ '%.2f'|format(p.adelanto or 0) }}</td>
+                        <td class="text-end text-success fw-bold">Bs. {{ '%.2f'|format(p.salario_neto or 0) }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="7" class="text-center text-muted py-3">No hay profesores registrados.</td></tr>
@@ -57,32 +64,32 @@
 
     <!-- SECCIÓN 2: PERSONAL ADMINISTRATIVO -->
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-secondary text-white">
-            <h5 class="mb-0"><i class="bi bi-person-badge-fill"></i> Personal Administrativo</h5>
+        <div class="card-header bg-secondary text-white py-2">
+            <h5 class="mb-0 fs-6"><i class="bi bi-person-badge-fill"></i> Personal Administrativo</h5>
         </div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped mb-0 align-middle">
-                <thead class="table-light">
+                <thead class="table-light text-center">
                     <tr>
-                        <th>N°</th>
-                        <th>Apellidos y Nombres</th>
-                        <th>C.I.</th>
-                        <th>Cargo / Área</th>
-                        <th>Salario Base</th>
-                        <th>Adelantos</th>
-                        <th>Líquido Pagable</th>
+                        <th style="width: 5%;">N°</th>
+                        <th style="width: 25%;">Apellidos y Nombres</th>
+                        <th style="width: 12%;">C.I.</th>
+                        <th style="width: 20%;">Cargo / Área</th>
+                        <th style="width: 13%;">Salario Base</th>
+                        <th style="width: 13%;">Adelantos</th>
+                        <th style="width: 12%;">Líquido</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for a in administrativos %}
                     <tr>
-                        <td>{{ loop.index }}</td>
+                        <td class="text-center">{{ loop.index }}</td>
                         <td class="fw-bold">{{ a.apellidos }}, {{ a.nombres }}</td>
                         <td>{{ a.ci or 'S/N' }}</td>
                         <td>{{ a.cargo }} ({{ a.area or 'General' }})</td>
-                        <td>Bs. {{ '%.2f'|format(a.salario_base or 0) }}</td>
-                        <td class="text-danger">Bs. {{ '%.2f'|format(a.adelanto or 0) }}</td>
-                        <td class="text-success fw-bold">Bs. {{ '%.2f'|format(a.salario_neto or 0) }}</td>
+                        <td class="text-end">Bs. {{ '%.2f'|format(a.salario_base or 0) }}</td>
+                        <td class="text-end text-danger">Bs. {{ '%.2f'|format(a.adelanto or 0) }}</td>
+                        <td class="text-end text-success fw-bold">Bs. {{ '%.2f'|format(a.salario_neto or 0) }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="7" class="text-center text-muted py-3">No hay personal administrativo registrado.</td></tr>
@@ -94,45 +101,96 @@
 
     <!-- TARJETA DE RESUMEN GLOBAL -->
     <div class="card shadow-sm bg-light border-dark">
-        <div class="card-body">
-            <h5 class="fw-bold text-dark mb-3"><i class="bi bi-calculator"></i> Resumen Consolidado de Planilla</h5>
+        <div class="card-body py-3">
+            <h6 class="fw-bold text-dark mb-2"><i class="bi bi-calculator"></i> Resumen Consolidado de Planilla</h6>
             <div class="row text-center">
-                <div class="col-md-4">
-                    <h6 class="text-muted">Total Salarios Base</h6>
-                    <h4 class="text-primary fw-bold">Bs. {{ '%.2f'|format(gran_total_base) }}</h4>
+                <div class="col-4">
+                    <small class="text-muted d-block">Total Salarios Base</small>
+                    <span class="text-primary fw-bold fs-6">Bs. {{ '%.2f'|format(gran_total_base) }}</span>
                 </div>
-                <div class="col-md-4">
-                    <h6 class="text-muted">Total Adelantos Acumulados</h6>
-                    <h4 class="text-danger fw-bold">Bs. {{ '%.2f'|format(gran_total_adelantos) }}</h4>
+                <div class="col-4">
+                    <small class="text-muted d-block">Total Adelantos</small>
+                    <span class="text-danger fw-bold fs-6">Bs. {{ '%.2f'|format(gran_total_adelantos) }}</span>
                 </div>
-                <div class="col-md-4">
-                    <h6 class="text-muted">Total Líquido Pagable Consolidado</h6>
-                    <h4 class="text-success fw-bold">Bs. {{ '%.2f'|format(gran_total_neto) }}</h4>
+                <div class="col-4">
+                    <small class="text-muted d-block">Total Líquido Pagable</small>
+                    <span class="text-success fw-bold fs-6">Bs. {{ '%.2f'|format(gran_total_neto) }}</span>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Pie de página institucional para impresión -->
+    <div class="print-footer text-center">
+        COLEGIO DR. ANTONIO VACA DÍEZ &bull; Módulo de Gestión de Personal y Finanzas &bull; Documento Oficial Consolidado
+    </div>
 </div>
 
 <style>
-@media print {
-    nav, footer, .btn, a {
-        display: none !important;
+    @page {
+        size: A4 portrait;
+        margin: 1cm;
     }
-    body {
-        background-color: #ffffff !important;
-        color: #000000 !important;
+    .print-header {
+        display: none;
     }
-    .card {
-        border: 1px solid #dee2e6 !important;
-        box-shadow: none !important;
-        break-inside: avoid;
+    .print-footer {
+        display: none;
     }
-    .container {
-        max-width: 100% !important;
-        padding: 0 !important;
-        margin: 0 !important;
+
+    @media print {
+        @page {
+            size: A4 portrait;
+            margin: 1cm;
+        }
+        nav, footer, .btn, a, .no-print {
+            display: none !important;
+        }
+        body {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            font-size: 11px !important;
+        }
+        .container {
+            max-width: 100% !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .print-header {
+            display: block !important;
+        }
+        .print-footer {
+            display: block !important;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            font-size: 9px;
+            color: #555;
+            border-top: 1px solid #ccc;
+            padding-top: 4px;
+        }
+        .card {
+            border: 1px solid #000 !important;
+            box-shadow: none !important;
+            margin-bottom: 15px !important;
+            background-color: #fff !important;
+            break-inside: avoid;
+        }
+        .card-header {
+            background-color: #e9ecef !important;
+            color: #000 !important;
+            border-bottom: 1px solid #000 !important;
+            font-weight: bold;
+        }
+        .table {
+            font-size: 10.5px !important;
+            margin-bottom: 0 !important;
+        }
+        .table th, .table td {
+            padding: 4px 6px !important;
+        }
     }
-}
 </style>
 {% endblock %}
