@@ -1,6 +1,3 @@
-from utils_backup import realizar_respaldo_db
-realizar_respaldo_db()
-
 # -*- coding: utf-8 -*-
 """
 ==============================================================================
@@ -26,7 +23,13 @@ from werkzeug.utils import secure_filename
 
 from models import db, Estudiante, ConfiguracionSuperadmin
 from config import Config
-from routes.auth import auth_bp
+
+# Intento de respaldo automático al iniciar
+try:
+    from utils_backup import realizar_respaldo_db
+    realizar_respaldo_db()
+except Exception:
+    pass
 
 # Zona horaria Bolivia (UTC-4)
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
@@ -34,14 +37,95 @@ BOLIVIA_TZ = timezone(timedelta(hours=-4))
 app = Flask(__name__)
 # Optimizacion de cache para activos estaticos
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
-
-@app.context_processor
-def inject_now():
-    return {'now': datetime.now}
 app.config.from_object(Config)
 
 db.init_app(app)
 csrf = CSRFProtect(app)
+
+@app.context_processor
+def inject_now():
+    return {'now': datetime.now}
+
+@app.context_processor
+def inject_institucion():
+    """Inyecta la configuración institucional globalmente en todas las plantillas."""
+    try:
+        config_list = ConfiguracionSuperadmin.query.all()
+        config_dict = {c.clave: c.valor for c in config_list if hasattr(c, 'clave') and hasattr(c, 'valor')}
+        return {'institucion': config_dict, 'config': config_dict}
+    except Exception:
+        return {'institucion': {}, 'config': {}}
+
+
+# ==============================================================================
+# FUNCIONES AUXILIARES DE CONFIGURACIÓN
+# ==============================================================================
+
+def _obtener_clave(clave, valor_por_defecto='N/A'):
+    """Función auxiliar segura para recuperar valores de configuración."""
+    try:
+        config = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
+        if config and hasattr(config, 'valor') and config.valor:
+            return config.valor
+    except Exception:
+        pass
+    return os.environ.get(clave.upper(), valor_por_defecto)
+
+def _set_clave(clave, valor):
+    """Guarda o actualiza una clave en la configuración de superadmin."""
+    try:
+        config = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
+        if config:
+            config.valor = str(valor)
+        else:
+            config = ConfiguracionSuperadmin(clave=clave, valor=str(valor))
+            db.session.add(config)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error al guardar clave {clave}: {e}")
+
+def _esta_configurado():
+    """Verifica si la institución ya cuenta con configuración inicial."""
+    try:
+        val = _obtener_clave('institucion_configurada', 'false')
+        return str(val).lower() == 'true'
+    except Exception:
+        return False
+
+def _obtener_configuracion_institucion():
+    """Devuelve un diccionario con toda la configuración institucional."""
+    try:
+        configs = ConfiguracionSuperadmin.query.all()
+        return {c.clave: c.valor for c in configs if hasattr(c, 'clave') and hasattr(c, 'valor')}
+    except Exception:
+        return {}
+
+def _generar_password(longitud=8):
+    """Genera una contraseña aleatoria segura."""
+    caracteres = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(caracteres) for _ in range(longitud))
+
+def rate_limit(max_intentos=5, ventana_segundos=300):
+    """Decorador simple de limitación de tasa para intentos de login."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            intentos_key = f'intentos_{request.endpoint}'
+            tiempo_bloqueo_key = f'bloqueo_{request.endpoint}'
+            
+            ahora = datetime.now().timestamp()
+            bloqueo_hasta = session.get(tiempo_bloqueo_key, 0)
+            
+            if ahora < bloqueo_hasta:
+                tiempo_restante = int(bloqueo_hasta - ahora)
+                flash(f'Demasiados intentos fallidos. Intente nuevamente en {tiempo_restante} segundos.', 'danger')
+                return render_template_string(LOGIN_TEMPLATE, error="Sistema bloqueado temporalmente por seguridad.")
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
 
 # ==============================================================================
 # BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
@@ -49,7 +133,6 @@ csrf = CSRFProtect(app)
 @app.before_request
 def bloquear_transacciones_sin_turno():
     path = request.path.lower()
-    # Intercepta cualquier ruta que involucre pagos, cobros o cardex financieros
     es_financiera = any(term in path for term in ['pago', 'pagar', 'cardex', 'cobro'])
     
     if es_financiera and request.method == 'POST':
@@ -62,16 +145,6 @@ def bloquear_transacciones_sin_turno():
                 return redirect(url_for('dashboard.index'))
             except Exception:
                 return redirect('/')
-
-def _obtener_clave(clave, valor_por_defecto='N/A'):
-    """Función auxiliar segura para recuperar valores de configuración."""
-    try:
-        config = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
-        if config and hasattr(config, 'valor') and config.valor:
-            return config.valor
-    except Exception:
-        pass
-    return os.environ.get(clave.upper(), valor_por_defecto)
 
 
 # ==============================================================================
@@ -194,225 +267,18 @@ try:
 except Exception as e:
     print(f"❌ Error rubricas: {e}")
 
+
+# ==============================================================================
+# RUTAS PRINCIPALES Y DE CONTROL GLOBAL
+# ==============================================================================
+
 @app.route('/')
 def index():
     return redirect(url_for('auth.login_turno'))
-    return redirect(url_for('dashboard.index'))
 
-
-
-# Alias de compatibilidad global: Redirige /login a /login-turno
 @app.route('/login')
 def redirect_login_raiz():
-    from flask import redirect, url_for
     return redirect(url_for('auth.login_turno'))
-
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
-
-    # ==============================================================================
-    # SECRET_KEY segura y persistente
-    # ==============================================================================
-    if not app.config.get('SECRET_KEY') or app.config.get('SECRET_KEY') == 'dev':
-        ruta_key = os.path.join(os.getcwd(), '.secret_key')
-        if os.path.exists(ruta_key):
-            with open(ruta_key, 'r') as f:
-                app.config['SECRET_KEY'] = f.read().strip()
-        else:
-            nueva_key = secrets.token_hex(32)
-            with open(ruta_key, 'w') as f:
-                f.write(nueva_key)
-            app.config['SECRET_KEY'] = nueva_key
-
-    # ==============================================================================
-    # BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
-    # ==============================================================================
-    @app.before_request
-    def bloquear_transacciones_sin_turno():
-        path = request.path.lower()
-        es_financiera = any(term in path for term in ['pago', 'pagar', 'cardex', 'cobro'])
-        
-        if es_financiera and request.method == 'POST':
-            turno_activo = session.get('turno') or session.get('turno_activo')
-            es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
-            
-            if not turno_activo and not es_superadmin:
-                flash('❌ Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
-                try:
-                    return redirect(url_for('dashboard.index'))
-                except Exception:
-                    return redirect('/')
-
-    # =========================================================================
-    # PROTECCIÓN CSRF GLOBAL
-    # =========================================================================
-    csrf = CSRFProtect(app)
-
-    # =========================================================================
-    # INICIALIZAR BASE DE DATOS Y CLAVES
-    # =========================================================================
-    db.init_app(app)
-
-    with app.app_context():
-        db.create_all()
-        _obtener_clave('pwa_password', _generar_password())
-        _obtener_clave('superadmin_password', 'ADMIN2026')
-
-    # =========================================================================
-    # PROTECCIÓN GLOBAL CON CONTRASEÑA + VERIFICACIÓN DE CONFIGURACIÓN
-    # =========================================================================
-
-    @app.before_request
-    def proteger_acceso_global():
-        """Protege TODA la aplicación con contraseña y verifica configuración."""
-        rutas_excluidas = [
-            'static',
-            'login_pwa',
-            'logout_pwa',
-            'setup',  # ⭐ Ruta de configuración inicial
-            'api_estudiantes_por_curso',
-            'portal_padres.',
-            'auth.',
-            'pwa.',
-        ]
-
-        endpoint = request.endpoint or ''
-
-        for excluida in rutas_excluidas:
-            if excluida in endpoint or request.path.startswith('/static'):
-                return None
-
-        # ⭐ VERIFICAR SI LA INSTITUCIÓN ESTÁ CONFIGURADA
-        if not _esta_configurado():
-            return redirect(url_for('setup'))
-
-        if session.get('pwa_autenticado'):
-            return None
-
-        return redirect(url_for('login_pwa'))
-
-    # =========================================================================
-    # ASISTENTE DE CONFIGURACIÓN INICIAL
-    # =========================================================================
-
-    @app.route('/setup', methods=['GET', 'POST'])
-    def setup():
-        """Formulario de configuración inicial de la institución."""
-        
-        # Si ya está configurado, redirigir al login
-        if _esta_configurado():
-            return redirect(url_for('login_pwa'))
-        
-        if request.method == 'POST':
-            try:
-                # Obtener datos del formulario
-                linea1 = request.form.get('linea1', '').strip()
-                linea2 = request.form.get('linea2', '').strip()
-                linea3 = request.form.get('linea3', '').strip()
-                direccion = request.form.get('direccion', '').strip()
-                telefono = request.form.get('telefono', '').strip()
-                email = request.form.get('email', '').strip()
-                ciudad = request.form.get('ciudad', '').strip()
-                gestion = request.form.get('gestion', str(datetime.now().year)).strip()
-                password_pwa = request.form.get('password_pwa', '').strip()
-                password_admin = request.form.get('password_admin', '').strip()
-                
-                # Validaciones básicas
-                if not linea1:
-                    flash('❌ El nombre de la institución (línea 1) es obligatorio.', 'danger')
-                    return render_template_string(SETUP_TEMPLATE)
-                
-                if not password_pwa or len(password_pwa) < 6:
-                    flash('❌ La contraseña PWA debe tener al menos 6 caracteres.', 'danger')
-                    return render_template_string(SETUP_TEMPLATE)
-                
-                if not password_admin or len(password_admin) < 6:
-                    flash('❌ La contraseña Superadmin debe tener al menos 6 caracteres.', 'danger')
-                    return render_template_string(SETUP_TEMPLATE)
-                
-                # Guardar configuración
-                _set_clave('institucion_linea1', linea1)
-                _set_clave('institucion_linea2', linea2)
-                _set_clave('institucion_linea3', linea3)
-                _set_clave('institucion_direccion', direccion)
-                _set_clave('institucion_telefono', telefono)
-                _set_clave('institucion_email', email)
-                _set_clave('institucion_ciudad', ciudad)
-                _set_clave('institucion_gestion', gestion)
-                
-                # Procesar logo si se subió
-                if 'logo' in request.files:
-                    logo_file = request.files['logo']
-                    if logo_file and logo_file.filename != '':
-                        filename = secure_filename(logo_file.filename)
-                        # Guardar con nombre fijo para facilitar referencia
-                        ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'png'
-                        logo_filename = f'logo_institucion.{ext}'
-                        
-                        # Crear carpeta si no existe
-                        upload_folder = os.path.join(app.static_folder, 'uploads')
-                        os.makedirs(upload_folder, exist_ok=True)
-                        
-                        logo_path = os.path.join(upload_folder, logo_filename)
-                        logo_file.save(logo_path)
-                        
-                        _set_clave('institucion_logo', f'uploads/{logo_filename}')
-                    else:
-                        _set_clave('institucion_logo', '')
-                else:
-                    _set_clave('institucion_logo', '')
-                
-                # Guardar contraseñas
-                _set_clave('pwa_password', password_pwa)
-                _set_clave('superadmin_password', password_admin)
-                
-                # Marcar como configurado
-                _set_clave('institucion_configurada', 'true')
-                
-                flash('✅ Configuración completada exitosamente. Ahora puede iniciar sesión.', 'success')
-                return redirect(url_for('login_pwa'))
-                
-            except Exception as e:
-                flash(f'❌ Error al guardar la configuración: {str(e)}', 'danger')
-                return render_template_string(SETUP_TEMPLATE)
-        
-        return render_template_string(SETUP_TEMPLATE)
-
-    # Eximir setup del CSRF (usa render_template_string)
-    csrf.exempt(setup)
-
-    # =========================================================================
-    # PANTALLA DE LOGIN PWA
-    # =========================================================================
-
-    @app.route('/login', methods=['GET', 'POST'])
-    @rate_limit(max_intentos=5, ventana_segundos=300)
-    def login_pwa():
-        """Pantalla de contraseña para acceder a la PWA."""
-        error = None
-
-        if request.method == 'POST':
-            password = request.form.get('password', '').strip()
-            clave_pwa = _obtener_clave('pwa_password', 'VacaDiez2026')
-
-            if password == clave_pwa:
-                session['pwa_autenticado'] = True
-                session['pwa_login_time'] = datetime.now().isoformat()
-                session.permanent = False
-                siguiente = request.args.get('next', url_for('dashboard.index'))
-                return redirect(siguiente)
-            else:
-                error = 'Contraseña incorrecta'
-
-        # Obtener configuración para mostrar en el login
-        config = _obtener_configuracion_institucion()
-        nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestión Escolar')
-
-        return render_template_string(LOGIN_TEMPLATE, error=error, 
-                                     nombre_institucion=nombre_institucion,
-                                     config=config)
 
 @app.route('/logout')
 def global_logout():
@@ -427,8 +293,120 @@ def global_logout():
         return redirect(url_for('auth.login_turno'))
     except Exception:
         return redirect('/')
+
+
 # ==============================================================================
-# PLANTILLA DE CONFIGURACIÓN INICIAL
+# ASISTENTE DE CONFIGURACIÓN INICIAL
+# ==============================================================================
+
+@app.route('/setup', methods=['GET', 'POST'])
+def setup():
+    """Formulario de configuración inicial de la institución."""
+    if _esta_configurado():
+        return redirect(url_for('login_pwa'))
+    
+    if request.method == 'POST':
+        try:
+            linea1 = request.form.get('linea1', '').strip()
+            linea2 = request.form.get('linea2', '').strip()
+            linea3 = request.form.get('linea3', '').strip()
+            direccion = request.form.get('direccion', '').strip()
+            telefono = request.form.get('telefono', '').strip()
+            email = request.form.get('email', '').strip()
+            ciudad = request.form.get('ciudad', '').strip()
+            gestion = request.form.get('gestion', str(datetime.now().year)).strip()
+            password_pwa = request.form.get('password_pwa', '').strip()
+            password_admin = request.form.get('password_admin', '').strip()
+            
+            if not linea1:
+                flash('❌ El nombre de la institución (línea 1) es obligatorio.', 'danger')
+                return render_template_string(SETUP_TEMPLATE)
+            
+            if not password_pwa or len(password_pwa) < 6:
+                flash('❌ La contraseña PWA debe tener al menos 6 caracteres.', 'danger')
+                return render_template_string(SETUP_TEMPLATE)
+            
+            if not password_admin or len(password_admin) < 6:
+                flash('❌ La contraseña Superadmin debe tener al menos 6 caracteres.', 'danger')
+                return render_template_string(SETUP_TEMPLATE)
+            
+            _set_clave('institucion_linea1', linea1)
+            _set_clave('institucion_linea2', linea2)
+            _set_clave('institucion_linea3', linea3)
+            _set_clave('institucion_direccion', direccion)
+            _set_clave('institucion_telefono', telefono)
+            _set_clave('institucion_email', email)
+            _set_clave('institucion_ciudad', ciudad)
+            _set_clave('institucion_gestion', gestion)
+            
+            if 'logo' in request.files:
+                logo_file = request.files['logo']
+                if logo_file and logo_file.filename != '':
+                    filename = secure_filename(logo_file.filename)
+                    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'png'
+                    logo_filename = f'logo_institucion.{ext}'
+                    
+                    upload_folder = os.path.join(app.static_folder, 'uploads')
+                    os.makedirs(upload_folder, exist_ok=True)
+                    
+                    logo_path = os.path.join(upload_folder, logo_filename)
+                    logo_file.save(logo_path)
+                    
+                    _set_clave('institucion_logo', f'uploads/{logo_filename}')
+                else:
+                    _set_clave('institucion_logo', '')
+            else:
+                _set_clave('institucion_logo', '')
+            
+            _set_clave('pwa_password', password_pwa)
+            _set_clave('superadmin_password', password_admin)
+            _set_clave('institucion_configurada', 'true')
+            
+            flash('✅ Configuración completada exitosamente. Ahora puede iniciar sesión.', 'success')
+            return redirect(url_for('login_pwa'))
+            
+        except Exception as e:
+            flash(f'❌ Error al guardar la configuración: {str(e)}', 'danger')
+            return render_template_string(SETUP_TEMPLATE)
+    
+    return render_template_string(SETUP_TEMPLATE)
+
+csrf.exempt(setup)
+
+
+# ==============================================================================
+# PANTALLA DE LOGIN PWA
+# ==============================================================================
+
+@app.route('/login-pwa', methods=['GET', 'POST'])
+@rate_limit(max_intentos=5, ventana_segundos=300)
+def login_pwa():
+    """Pantalla de contraseña para acceder a la PWA."""
+    error = None
+
+    if request.method == 'POST':
+        password = request.form.get('password', '').strip()
+        clave_pwa = _obtener_clave('pwa_password', 'VacaDiez2026')
+
+        if password == clave_pwa:
+            session['pwa_autenticado'] = True
+            session['pwa_login_time'] = datetime.now().isoformat()
+            session.permanent = False
+            siguiente = request.args.get('next', url_for('dashboard.index'))
+            return redirect(siguiente)
+        else:
+            error = 'Contraseña incorrecta'
+
+    config = _obtener_configuracion_institucion()
+    nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestión Escolar')
+
+    return render_template_string(LOGIN_TEMPLATE, error=error, 
+                                 nombre_institucion=nombre_institucion,
+                                 config=config)
+
+
+# ==============================================================================
+# PLANTILLAS INTEGRADAS (SETUP & LOGIN)
 # ==============================================================================
 
 SETUP_TEMPLATE = """
@@ -490,13 +468,6 @@ SETUP_TEMPLATE = """
             margin-bottom: 15px;
             padding-bottom: 8px;
             border-bottom: 2px solid #38bdf8;
-        }
-        .logo-preview {
-            max-width: 150px;
-            max-height: 150px;
-            margin-top: 10px;
-            border-radius: 8px;
-            border: 2px solid #e2e8f0;
         }
     </style>
 </head>
@@ -612,11 +583,6 @@ SETUP_TEMPLATE = """
 </body>
 </html>
 """
-
-
-# ==============================================================================
-# PLANTILLA DE LOGIN PWA
-# ==============================================================================
 
 LOGIN_TEMPLATE = """
 <!DOCTYPE html>
@@ -741,18 +707,29 @@ LOGIN_TEMPLATE = """
 """
 
 
+# ==============================================================================
+# EJECUCIÓN DE LA APLICACIÓN
+# ==============================================================================
 
 if __name__ == '__main__':
-    app = create_app()
-
     with app.app_context():
         db.create_all()
+
+        # Configuración de clave secreta segura persistente
+        ruta_key = os.path.join(os.getcwd(), '.secret_key')
+        if not app.config.get('SECRET_KEY') or app.config.get('SECRET_KEY') == 'dev':
+            if os.path.exists(ruta_key):
+                with open(ruta_key, 'r') as f:
+                    app.config['SECRET_KEY'] = f.read().strip()
+            else:
+                nueva_key = secrets.token_hex(32)
+                with open(ruta_key, 'w') as f:
+                    f.write(nueva_key)
+                app.config['SECRET_KEY'] = nueva_key
 
         clave_pwa = _obtener_clave('pwa_password', 'N/A')
         clave_admin = _obtener_clave('superadmin_password', 'N/A')
         
-        # ... resto del código ...
-
         print("=" * 60)
         print(f"🔐 CONTRASEÑA PWA ACTUAL: {clave_pwa}")
         print(f"🔒 CONTRASEÑA SUPERADMIN: {clave_admin}")
@@ -760,13 +737,8 @@ if __name__ == '__main__':
         print("=" * 60)
 
     ES_PRODUCCION = os.environ.get('FLASK_ENV') == 'production'
-
     app.run(
         debug=not ES_PRODUCCION,
         host='0.0.0.0',
         port=5000
     )
-
-
-
-
