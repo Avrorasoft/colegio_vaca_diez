@@ -1635,3 +1635,91 @@ def planilla_general():
         gran_total_neto=gran_total_neto,
         anio_actual=datetime.now().year
     )
+
+# ==============================================================================
+# REIMPRESIÓN O DESCARGA DE RECIBO HISTÓRICO DE PAGO
+# ==============================================================================
+
+@personal_bp.route('/reimprimir_recibo/<int:pago_id>')
+def reimprimir_recibo(pago_id):
+    """Permite regenerar y visualizar el recibo de un pago histórico específico."""
+    pago = PagoPersonal.query.get_or_404(pago_id)
+    
+    if pago.tipo == 'Profesor':
+        persona = Profesor.query.get(pago.persona_id)
+        tipo_str = 'profesor'
+        tipo_db = 'Profesor'
+    elif pago.tipo == 'Administrativo':
+        persona = PersonalAdministrativo.query.get(pago.persona_id)
+        tipo_str = 'admin'
+        tipo_db = 'Administrativo'
+    elif pago.tipo == 'Adelanto':
+        # Si es un adelanto registrado
+        if pago.persona_id:
+            persona = Profesor.query.get(pago.persona_id) or PersonalAdministrativo.query.get(pago.persona_id)
+            tipo_str = 'profesor' if isinstance(persona, Profesor) else 'admin'
+        else:
+            flash('❌ No se encontró la persona asociada a este adelanto.', 'danger')
+            return redirect(url_for('personal.pagos_personal'))
+    else:
+        flash('❌ Tipo de pago no válido para impresión.', 'danger')
+        return redirect(url_for('personal.pagos_personal'))
+
+    if not persona:
+        flash('❌ Trabajador no encontrado.', 'danger')
+        return redirect(url_for('personal.pagos_personal'))
+
+    try:
+        if pago.tipo == 'Adelanto':
+            bytes_pdf = generar_recibo_adelanto_pdf(pago=pago, persona=persona, tipo_db=tipo_str)
+            prefijo = "recibo_adelanto"
+        else:
+            bytes_pdf = generar_recibo_personal_pdf(pago=pago, persona=persona, tipo_db=tipo_db)
+            prefijo = "recibo_personal"
+
+        recibos_dir = os.path.join(os.getcwd(), 'static', 'recibos_personal')
+        os.makedirs(recibos_dir, exist_ok=True)
+
+        recibo_filename = f"{prefijo}_{persona.id}_{pago.id}_{int(datetime.now().timestamp())}.pdf"
+        recibo_filepath = os.path.join(recibos_dir, recibo_filename)
+
+        with open(recibo_filepath, 'wb') as f:
+            f.write(bytes_pdf)
+
+        return redirect(url_for('personal.ver_recibo_pdf', filename=recibo_filename))
+
+    except Exception as e:
+        print(f"Error al generar recibo histórico: {e}")
+        flash(f'❌ Error al generar el documento PDF: {str(e)}', 'danger')
+        return redirect(url_for('personal.cardex_personal', tipo=tipo_str, id=persona.id))
+
+
+# ==============================================================================
+# IMPRESIÓN DE HISTORIAL COMPLETO DE PAGOS (VISTA DEDICADA)
+# ==============================================================================
+
+@personal_bp.route('/imprimir_historial/<tipo>/<int:id>')
+def imprimir_historial_pagos(tipo, id):
+    """Genera una vista limpia y exclusiva para imprimir todas las transacciones de pagos de un trabajador."""
+    if tipo == 'profesor':
+        persona = Profesor.query.get_or_404(id)
+        tipo_db = 'Profesor'
+    else:
+        persona = PersonalAdministrativo.query.get_or_404(id)
+        tipo_db = 'Administrativo'
+
+    pagos = PagoPersonal.query.filter(
+        PagoPersonal.persona_id == id,
+        PagoPersonal.tipo.in_([tipo_db, 'Adelanto'])
+    ).order_by(PagoPersonal.fecha_pago.desc(), PagoPersonal.id.desc()).all()
+
+    total_pagado = sum(float(p.monto_neto_pagado or 0.0) for p in pagos)
+
+    return render_template(
+        'personal/imprimir_historial.html',
+        persona=persona,
+        tipo=tipo_db,
+        pagos=pagos,
+        total_pagado=total_pagado,
+        anio_actual=datetime.now().year
+    )

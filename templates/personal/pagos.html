@@ -1,94 +1,135 @@
 {% extends "base.html" %}
+{% block title %}Gestión de Pagos al Personal{% endblock %}
+
 {% block content %}
-<div class="container-fluid">
-    <h3 class="mb-4"><i class="bi bi-cash-coin"></i> Gestión de Pagos al Personal</h3>
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-primary mb-0"><i class="bi bi-cash-coin"></i> Gestión de Pagos al Personal</h3>
+            <p class="text-muted mb-0">Colegio Dr. Antonio Vaca Díez - Control Financiero y Planillas</p>
+        </div>
+        <div>
+            <a href="{{ url_for('personal.planilla_general') }}" class="btn btn-success fw-bold shadow-sm me-2" target="_blank">
+                <i class="bi bi-file-earmark-spreadsheet-fill"></i> Ver Planilla General Consolidada
+            </a>
+        </div>
+    </div>
     
-    <div class="card mb-4 bg-primary text-white">
-        <div class="card-body d-flex justify-content-between">
-            <h4>Planilla Neta Total del Mes:</h4>
-            <h3>Bs. {{ "%.2f"|format(total_planilla) }}</h3>
+    <div class="card mb-4 bg-primary text-white shadow-sm">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0 text-white-50">Planilla Neta Total del Mes:</h5>
+                <small>Suma global de sueldos netos activos de profesores y administrativos</small>
+            </div>
+            <h3 class="fw-bold mb-0">Bs. {{ "%.2f"|format(total_planilla) }}</h3>
         </div>
     </div>
 
     <div class="row">
-        <div class="col-md-5">
-            <div class="card">
-                <div class="card-header bg-success text-white">Registrar Nuevo Pago</div>
+        <!-- FORMULARIO DE REGISTRO DE PAGO -->
+        <div class="col-md-5 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-success text-white fw-bold">
+                    <i class="bi bi-plus-circle-fill me-2"></i>Registrar Nuevo Pago de Sueldo
+                </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('personal.registrar_pago') }}">
+                    <form method="POST" action="{{ url_for('personal.registrar_pago') }}" id="formRegistrarPago">
                         <div class="mb-3">
-                            <label>Tipo</label>
-                            <select name="tipo" class="form-select" required>
-                                <option value="Profesor">Profesor</option>
-                                <option value="Administrativo">Administrativo</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Seleccionar Persona</label>
-                            <select name="persona_id" class="form-select" required>
+                            <label class="form-label fw-bold">Seleccionar Trabajador</label>
+                            <select name="persona_id" id="persona_id" class="form-select" required onchange="actualizarDatosPersona()">
                                 <option value="">-- Seleccione un trabajador --</option>
                                 <optgroup label="👨‍🏫 Profesores">
                                     {% for p in profesores %}
-                                    <option value="P-{{ p.id }}">{{ p.apellidos }}, {{ p.nombres }} (Neto: Bs. {{ p.salario_neto }})</option>
+                                    <option value="P-{{ p.id }}" data-salario="{{ p.salario_base or 0 }}">
+                                        {{ p.apellidos }}, {{ p.nombres }} (Base: Bs. {{ '%.2f'|format(p.salario_base or 0) }})
+                                    </option>
                                     {% endfor %}
                                 </optgroup>
                                 <optgroup label="🏢 Personal Administrativo">
                                     {% for a in administrativos %}
-                                    <option value="A-{{ a.id }}">{{ a.apellidos }}, {{ a.nombres }} (Neto: Bs. {{ a.salario_neto }})</option>
+                                    <option value="A-{{ a.id }}" data-salario="{{ a.salario_base or 0 }}">
+                                        {{ a.apellidos }}, {{ a.nombres }} (Base: Bs. {{ '%.2f'|format(a.salario_base or 0) }})
+                                    </option>
                                     {% endfor %}
                                 </optgroup>
                             </select>
                         </div>
+                        
                         <div class="row">
                             <div class="col-6 mb-3">
-                                <label>Mes</label>
-                                <select name="mes" class="form-select">
-                                    <option>Enero</option><option>Febrero</option><option>Marzo</option>
-                                    <option>Abril</option><option>Mayo</option><option>Junio</option>
-                                    <option>Julio</option><option>Agosto</option><option>Septiembre</option>
-                                    <option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
+                                <label class="form-label fw-bold">Mes</label>
+                                <select name="mes" id="mes_pago" class="form-select" onchange="consultarAdelantosPeriodo()">
+                                    {% set mes_actual_idx = now().month - 1 %}
+                                    {% set meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'] %}
+                                    {% for m in meses %}
+                                    <option value="{{ m }}" {% if loop.index0 == mes_actual_idx %}selected{% endif %}>{{ m }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <div class="col-6 mb-3">
-                                <label>Año</label>
-                                <input type="number" name="anio" class="form-control" value="{{ anio_actual }}" required>
+                                <label class="form-label fw-bold">Año</label>
+                                <input type="number" name="anio" id="anio_pago" class="form-control" value="{{ anio_actual }}" required onchange="consultarAdelantosPeriodo()">
                             </div>
                         </div>
+
                         <div class="mb-3">
-                            <label>Monto Base (Bs.)</label>
-                            <input type="number" step="0.01" name="monto_base" class="form-control" required>
+                            <label class="form-label fw-bold">Monto Base (Bs.)</label>
+                            <input type="number" step="0.01" name="monto_base" id="monto_base" class="form-control" required readonly>
+                            <small class="text-muted">Cargado automáticamente del perfil del trabajador</small>
                         </div>
+
                         <div class="mb-3">
-                            <label>Descuento por Adelanto (Bs.)</label>
-                            <input type="number" step="0.01" name="monto_adelanto" class="form-control" value="0">
+                            <label class="form-label fw-bold text-danger">Descuento por Adelantos (Bs.)</label>
+                            <input type="number" step="0.01" name="monto_adelanto" id="monto_adelanto" class="form-control text-danger fw-bold" value="0.00">
+                            <small class="text-muted" id="infoAdelantos">Adelantos acumulados en el mes seleccionado.</small>
                         </div>
-                        <button type="submit" class="btn btn-success w-100">Registrar Pago</button>
+
+                        <button type="submit" class="btn btn-success w-100 fw-bold py-2">
+                            <i class="bi bi-check-circle-fill me-2"></i>Registrar Pago y Generar Recibo
+                        </button>
                     </form>
                 </div>
             </div>
         </div>
         
-        <div class="col-md-7">
-            <div class="card">
-                <div class="card-header bg-dark text-white">Historial de Pagos</div>
+        <!-- HISTORIAL DE PAGOS REGISTRADOS -->
+        <div class="col-md-7 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <span class="fw-bold"><i class="bi bi-clock-history me-2"></i>Historial de Pagos Registrados</span>
+                    <span class="badge bg-secondary">Últimos registros</span>
+                </div>
                 <div class="card-body p-0">
-                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                        <table class="table table-sm mb-0">
+                    <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                        <table class="table table-sm table-striped table-hover mb-0 align-middle">
                             <thead class="table-dark sticky-top">
-                                <tr><th>Fecha</th><th>Nombre</th><th>Mes/Año</th><th>Base</th><th>Adelanto</th><th>Neto Pagado</th></tr>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Nombre</th>
+                                    <th>Periodo</th>
+                                    <th>Base</th>
+                                    <th>Adelanto</th>
+                                    <th>Líquido</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 {% for h in historial %}
                                 <tr>
-                                    <td>{{ h.fecha_pago.strftime('%d/%m/%Y') }}</td>
-                                    <td>{{ h.nombre_persona }}</td>
+                                    <td>{{ h.fecha_pago.strftime('%d/%m/%Y') if h.fecha_pago else '-' }}</td>
+                                    <td class="fw-bold">{{ h.nombre_persona }}</td>
                                     <td>{{ h.mes }}/{{ h.anio }}</td>
-                                    <td>Bs. {{ h.monto_base }}</td>
-                                    <td class="text-danger">- Bs. {{ h.monto_adelanto }}</td>
-                                    <td class="text-success fw-bold">Bs. {{ h.monto_neto_pagado }}</td>
+                                    <td>Bs. {{ '%.2f'|format(h.monto_base or 0) }}</td>
+                                    <td class="text-danger">- Bs. {{ '%.2f'|format(h.monto_adelanto or 0) }}</td>
+                                    <td class="text-success fw-bold">Bs. {{ '%.2f'|format(h.monto_neto_pagado or 0) }}</td>
+                                    <td class="text-center">
+                                        <a href="{{ url_for('personal.reimprimir_recibo', pago_id=h.id) }}" class="btn btn-sm btn-outline-primary" target="_blank" title="Imprimir Recibo Individual">
+                                            <i class="bi bi-printer-fill"></i> Imprimir
+                                        </a>
+                                    </td>
                                 </tr>
                                 {% else %}
-                                <tr><td colspan="6" class="text-center">No hay pagos registrados aún.</td></tr>
+                                <tr><td colspan="7" class="text-center text-muted py-4">No hay pagos registrados aún.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -98,4 +139,43 @@
         </div>
     </div>
 </div>
+
+<!-- SCRIPT DE AUTOMATIZACIÓN DE MONTOS Y ADELANTOS -->
+<script>
+function actualizarDatosPersona() {
+    const select = document.getElementById('persona_id');
+    const option = select.options[select.selectedIndex];
+    const salario = option.getAttribute('data-salario') || 0;
+    
+    document.getElementById('monto_base').value = parseFloat(salario).toFixed(2);
+    consultarAdelantosPeriodo();
+}
+
+function consultarAdelantosPeriodo() {
+    const select = document.getElementById('persona_id');
+    const val = select.value;
+    if (!val) return;
+
+    const tipoPersona = val.charAt(0); // P o A
+    const personaId = val.substring(2);
+    const mes = document.getElementById('mes_pago').value;
+    const anio = document.getElementById('anio_pago').value;
+    
+    const tipoStr = (tipoPersona === 'P') ? 'profesor' : 'admin';
+
+    fetch(`/personal/api/adelantos_periodo/${tipoStr}/${personaId}?mes=${encodeURIComponent(mes)}&anio=${anio}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                document.getElementById('monto_adelanto').value = parseFloat(data.total).toFixed(2);
+                if (data.total > 0) {
+                    document.getElementById('infoAdelantos').innerHTML = `<span class="text-success fw-bold">✔ Se encontraron Bs. ${data.total.toFixed(2)} en adelantos registrados para ${mes} ${anio}.</span>`;
+                } else {
+                    document.getElementById('infoAdelantos').innerHTML = `<span class="text-muted">No hay adelantos registrados para este periodo.</span>`;
+                }
+            }
+        })
+        .catch(err => console.error('Error al consultar adelantos:', err));
+}
+</script>
 {% endblock %}
