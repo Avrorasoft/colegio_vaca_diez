@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Registro y Archivo de Egresados - Colegio Dr. Antonio Vaca Díez{% endblock %}
+{% block title %}Registro y Archivo de Egresados - {{ institucion.get('institucion_linea1', 'Sistema de Gestión Escolar') if institucion else 'Sistema de Gestión Escolar' }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4 px-4">
@@ -7,7 +7,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
         <div>
             <h3 class="fw-bold mb-0 text-dark">🎓 Archivo y Registro de Egresados</h3>
-            <small class="text-muted">Colegio Dr. Antonio Vaca Díez | Búsqueda y Gestión de Cárdex de Bachilleres</small>
+            <small class="text-muted">{{ institucion.get('institucion_linea1', 'Sistema de Gestión Escolar') if institucion else 'Sistema de Gestión Escolar' }} | Búsqueda y Gestión de Cárdex de Bachilleres</small>
         </div>
         <div>
             <a href="{{ url_for('estudiantes.nuevo_egresado') }}" class="btn btn-primary px-3 shadow-sm fw-semibold">
@@ -96,9 +96,9 @@
                         </td>
                         <td class="text-center">
                             {% if 'tarde' in (eg.turno or '')|lower %}
-                                <span class="badge bg-info text-dark">🌇 Tarde</span>
+                            <span class="badge bg-info text-dark">🌇 Tarde</span>
                             {% else %}
-                                <span class="badge bg-warning text-dark">🌅 Mañana</span>
+                            <span class="badge bg-warning text-dark">🌅 Mañana</span>
                             {% endif %}
                         </td>
                         <td class="text-center fw-bold text-primary">
@@ -131,4 +131,3 @@
     </div>
 </div>
 {% endblock %}
-

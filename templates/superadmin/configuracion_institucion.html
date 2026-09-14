@@ -1,3 +1,8 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración Institucional - Bóveda{% endblock %}
+
+{% block content %}
     <style id="estilo-boletin-carta-impresion">
         /* MEDIDAS Y MÁRGENES ESTRICTOS TAMAÑO CARTA */
         @page {
@@ -10,7 +15,8 @@
             body {
                 background-color: #cbd5e1 !important;
                 margin: 0 !important;
-                padding: 20px 0 !important;
+                /* AQUÍ ESTÁ LA CORRECCIÓN: Padding a 0 para eliminar el centímetro en blanco */
+                padding: 0 !important;
             }
             .hoja-impresion-boletin {
                 background: #ffffff !important;
@@ -131,12 +137,6 @@
         }
     </style>
     
-{% extends "base.html" %}
-
-{% block title %}Configuración Institucional - Bóveda</div></div>
-{% endblock %}
-
-{% block content %}
 <div class="hoja-impresion-boletin">
     {# MARCA DE AGUA INTEGRADA DE FONDO (DETRÁS DEL TEXTO) #}
     {% set _est = est if (est is defined and est) else (estudiante if (estudiante is defined and estudiante) else (alumno if (alumno is defined and alumno) else None)) %}
@@ -144,7 +144,7 @@
     <div class="watermark-fondo">
         <div class="wm-alumno">{{ _est.apellidos }} {{ _est.nombres }}</div>
         <div class="wm-datos">C.I. {{ _est.ci }} {{ _est.expedido or 'BN' }} &bull; RUDE: {{ _est.rude or '-' }}</div>
-        <div class="wm-col">COLEGIO DR. ANTONIO VACA DÍEZ</div>
+        <div class="wm-col">{{ configs.institucion_linea1 | upper if configs and configs.institucion_linea1 else 'SISTEMA DE GESTIÓN ESCOLAR' }}</div>
     </div>
     {% endif %}
 <div class="contenido-documento">
@@ -165,9 +165,6 @@
 
     <form method="POST" enctype="multipart/form-data">
         
-        <!-- ============================================= -->
-        <!-- LOGO DE LA INSTITUCIÓN -->
-        <!-- ============================================= -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0"><i class="bi bi-image"></i> Logo Oficial de la Institución</h5>
@@ -209,9 +206,6 @@
             </div>
         </div>
 
-        <!-- ============================================= -->
-        <!-- DENOMINACIÓN DE LA INSTITUCIÓN -->
-        <!-- ============================================= -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-success text-white">
                 <h5 class="mb-0"><i class="bi bi-card-heading"></i> Denominación de la Institución</h5>
@@ -222,28 +216,25 @@
                         <label class="form-label fw-bold">Línea 1 - Nombre Principal</label>
                         <input type="text" name="institucion_linea1" class="form-control"
                                value="{{ configs.institucion_linea1 or '' }}"
-                               placeholder="Ej: Dr. Antonio Vaca Díez">
+                               placeholder="Ej: Sistema de Gestión Escolar">
                         <small class="text-muted">Nombre principal de la institución (aparece en el membrete de los PDFs)</small>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Línea 2 - Tipo de Institución</label>
                         <input type="text" name="institucion_linea2" class="form-control"
                                value="{{ configs.institucion_linea2 or '' }}"
-                               placeholder="Ej: Colegio Privado">
+                               placeholder="Ej: Institución Educativa">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Línea 3 - Ubicación</label>
                         <input type="text" name="institucion_linea3" class="form-control"
                                value="{{ configs.institucion_linea3 or '' }}"
-                               placeholder="Ej: Riberalta - Beni">
+                               placeholder="Ej: Ciudad - Departamento">
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================= -->
-        <!-- DATOS DE CONTACTO -->
-        <!-- ============================================= -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-info text-white">
                 <h5 class="mb-0"><i class="bi bi-telephone"></i> Datos de Contacto y Ubicación</h5>
@@ -254,25 +245,25 @@
                         <label class="form-label fw-bold">Dirección</label>
                         <input type="text" name="institucion_direccion" class="form-control"
                                value="{{ configs.institucion_direccion or '' }}"
-                               placeholder="Ej: Av. Dr. Martinez, esquina Alberto Natusch">
+                               placeholder="Ej: Av. Principal, esquina Calle Central">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label fw-bold">Teléfono</label>
                         <input type="text" name="institucion_telefono" class="form-control"
                                value="{{ configs.institucion_telefono or '' }}"
-                               placeholder="Ej: 76881718">
+                               placeholder="Ej: 70000000">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label fw-bold">Ciudad</label>
                         <input type="text" name="institucion_ciudad" class="form-control"
                                value="{{ configs.institucion_ciudad or '' }}"
-                               placeholder="Ej: Riberalta">
+                               placeholder="Ej: Ciudad">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Correo Electrónico</label>
                         <input type="email" name="institucion_email" class="form-control"
                                value="{{ configs.institucion_email or '' }}"
-                               placeholder="Ej: info@vacadiez.com">
+                               placeholder="Ej: info@institucion.edu">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label fw-bold">Gestión</label>
@@ -284,7 +275,6 @@
             </div>
         </div>
 
-        <!-- BOTÓN GUARDAR -->
         <div class="text-center mb-5">
             <button type="submit" class="btn btn-success btn-lg px-5">
                 <i class="bi bi-check-circle"></i> Guardar Configuración Institucional
@@ -321,7 +311,6 @@ function previewLogo(input) {
 
 </div></div>
 
-    <!-- ZONA DE PELIGRO: RESTABLECIMIENTO DE FÁBRICA -->
     <div class="card border-danger shadow-sm mt-5 mb-4">
         <div class="card-header bg-danger text-white py-3">
             <h5 class="card-title mb-0 fw-bold">
@@ -333,9 +322,9 @@ function previewLogo(input) {
                 <div class="col-lg-8">
                     <h6 class="fw-bold text-danger mb-1">Volver a Valores de Fábrica (Puesta a Cero)</h6>
                     <p class="text-muted small mb-0">
-                        Esta acción vaciará por completo todos los registros de alumnos, notas, pagos, asistencias y finanzas. 
+                        Esta acción vaciará por completo todos los registros de alumnos, notas, pagos, asistencias, carpetas multimedia y archivos físicos. 
                         Las contraseñas de Superadmin y PWA volverán a su valor inicial de fábrica (<strong>ADMIN2026</strong>).
-                        Esta operación es irreversible y está diseñada para iniciar una nueva gestión escolar desde cero.
+                        Esta operación es irreversible y dejará el sistema totalmente neutral.
                     </p>
                 </div>
                 <div class="col-lg-4 text-lg-end mt-3 mt-lg-0">
@@ -347,7 +336,6 @@ function previewLogo(input) {
         </div>
     </div>
 
-    <!-- MODAL DE CONFIRMACIÓN SEGURA -->
     <div class="modal fade" id="modalRestablecerFabrica" tabindex="-1" aria-labelledby="modalRestablecerLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-danger">
@@ -361,9 +349,9 @@ function previewLogo(input) {
                     <div class="modal-body p-4">
                         <p class="text-dark fw-semibold mb-2">¿Está absolutamente seguro de proceder?</p>
                         <ul class="text-secondary small mb-3">
-                            <li>Se eliminarán todos los estudiantes inscritos.</li>
-                            <li>Se borrarán todas las notas e historiales pedagógicos.</li>
-                            <li>Se purgará la totalidad de pagos, recibos y movimientos económicos.</li>
+                            <li>Se eliminarán todos los registros institucionales y de usuarios.</li>
+                            <li>Se borrarán todos los archivos multimedia, logos y documentos adjuntos.</li>
+                            <li>Se purgará la base de datos completa dejándola en su estado neutro original.</li>
                             <li>La contraseña volverá al valor de fábrica: <code>ADMIN2026</code>.</li>
                         </ul>
                         <div class="mb-3">
@@ -385,6 +373,3 @@ function previewLogo(input) {
     </div>
 
 {% endblock %}
-
-
-

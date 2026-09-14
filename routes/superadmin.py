@@ -22,6 +22,8 @@ import calendar
 import time
 import threading
 import secrets
+import stat
+import subprocess
 
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
@@ -43,8 +45,6 @@ from models import (
 
 
 superadmin_bp = Blueprint('superadmin', __name__,
-
-
                           template_folder='templates/superadmin')
 
 _scheduler_informes_iniciado = False
@@ -148,7 +148,7 @@ def _set_pwa_password(nueva_password):
                 valor=nueva_password,
                 descripcion='Contraseña de acceso global a la PWA'
             )
-            db.session.add(cfg)
+        db.session.add(cfg)
         db.session.commit()
         return True
     except Exception:
@@ -268,7 +268,7 @@ def cambiar_password_pwa():
         return redirect(url_for('superadmin.cambiar_password_pwa'))
 
     return render_template_string(PWA_PASSWORD_TEMPLATE,
-                                  password_actual=password_actual)
+        password_actual=password_actual)
 
 
 # =========================================================================
@@ -331,14 +331,10 @@ def generar_backup_sql_mysql():
 
         f.write("SET FOREIGN_KEY_CHECKS=1;\n")
 
-    cursor.close()
-    conexion.close()
+        cursor.close()
+        conexion.close()
     return sql_path
 
-
-# =========================================================================
-# 1. GENERAR PROYECTO (.avr)
-# =========================================================================
 
 # =========================================================================
 # 1. GENERAR PROYECTO (.avr)
@@ -433,6 +429,7 @@ def generar_avr():
     except Exception as e:
         flash(f'❌ Error al generar proyecto .avr: {str(e)}', 'danger')
         return redirect(url_for('superadmin.boveda'))
+
 
 @superadmin_bp.route('/restaurar_avr', methods=['POST'])
 def restaurar_avr():
@@ -614,12 +611,21 @@ def restaurar_avr():
 # 3. RESETEO DE FÁBRICA
 # =========================================================================
 
+def _force_remove_readonly(func, path, exc_info):
+    """Fuerza la eliminación de archivos bloqueados quitando el modo Solo Lectura."""
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        pass
+
 @superadmin_bp.route('/reset_fabrica', methods=['POST'])
 def reset_fabrica():
     if not check_superadmin():
         return redirect(url_for('dashboard.index'))
 
     try:
+        # 1. LIMPIEZA DE BASE DE DATOS (Registros operativos)
         for modelo in [
             InformeEconomico, HistorialCalificacion, Egresado, Mensaje,
             Gasto, PagoPersonal, Pago, Calificacion, Falta, Materia,
@@ -627,26 +633,57 @@ def reset_fabrica():
         ]:
             db.session.query(modelo).delete()
 
+        # 2. LIMPIEZA DE CONFIGURACIONES INSTITUCIONALES (Para vaciar el formulario)
+        claves_institucionales = [
+            'institucion_linea1', 'institucion_linea2', 'institucion_linea3',
+            'institucion_direccion', 'institucion_telefono', 'institucion_ciudad',
+            'institucion_email', 'institucion_gestion', 'institucion_logo'
+        ]
+        db.session.query(ConfiguracionSuperadmin).filter(
+            ConfiguracionSuperadmin.clave.in_(claves_institucionales)
+        ).delete(synchronize_session=False)
+
         db.session.commit()
 
+        # 3. PURGA DESTRUCTIVA DE CARPETAS MULTIMEDIA (WINDOWS BRUTE FORCE)
         carpetas_limpiar = [
-            os.path.join(current_app.root_path, 'static', 'uploads', 'estudiantes'),
-            os.path.join(current_app.root_path, 'static', 'uploads', 'personal'),
+            os.path.join(current_app.root_path, 'static', 'uploads'),
             os.path.join(current_app.root_path, 'static', 'recibos'),
-            os.path.join(current_app.root_path, 'static', 'boletines')
+            os.path.join(current_app.root_path, 'static', 'boletines'),
+            os.path.join(current_app.root_path, 'static', 'recibos_personal'),
+            os.path.join(current_app.root_path, 'static', 'backups')
         ]
 
         for carpeta in carpetas_limpiar:
             if os.path.exists(carpeta):
-                for archivo in os.listdir(carpeta):
-                    ruta_arch = os.path.join(carpeta, archivo)
-                    if os.path.isfile(ruta_arch) and archivo != 'default.png':
-                        try:
-                            os.remove(ruta_arch)
-                        except Exception:
-                            pass
+                # Intento 1: shutil.rmtree con cambio de permisos en tiempo real
+                try:
+                    shutil.rmtree(carpeta, onerror=_force_remove_readonly)
+                except Exception:
+                    pass
+                
+                # Intento 2: Aniquilación a nivel de sistema operativo (CMD Windows)
+                if os.path.exists(carpeta):
+                    try:
+                        subprocess.call(['cmd', '/c', 'rmdir', '/S', '/Q', carpeta])
+                    except Exception:
+                        pass
 
-        flash('⚠️ SISTEMA RESETEADO A FÁBRICA.', 'warning')
+        # 4. RECONSTRUCCIÓN DE ESTRUCTURA BÁSICA (Evitar errores 404/500 por carpetas faltantes)
+        carpetas_recrear = [
+            os.path.join(current_app.root_path, 'static', 'uploads', 'estudiantes'),
+            os.path.join(current_app.root_path, 'static', 'uploads', 'personal'),
+            os.path.join(current_app.root_path, 'static', 'uploads', 'chat'),
+            os.path.join(current_app.root_path, 'static', 'uploads', 'archivos'),
+            os.path.join(current_app.root_path, 'static', 'recibos'),
+            os.path.join(current_app.root_path, 'static', 'boletines'),
+            os.path.join(current_app.root_path, 'static', 'recibos_personal'),
+            os.path.join(current_app.root_path, 'static', 'backups')
+        ]
+        for carpeta in carpetas_recrear:
+            os.makedirs(carpeta, exist_ok=True)
+
+        flash('⚠️ SISTEMA RESETEADO A FÁBRICA. BASE DE DATOS Y ARCHIVOS PURGADOS TOTALMENTE.', 'warning')
 
     except Exception as e:
         db.session.rollback()
@@ -960,24 +997,24 @@ INFORMES_LOGIN_TEMPLATE = """
 <html>
 <head><meta charset="utf-8"><title>Informes Económicos Confidenciales</title></head>
 <body style="font-family:Arial;background:#0f172a;color:white;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;">
-    <div style="background:#1e293b;padding:35px;border-radius:12px;width:380px;text-align:center;">
-        <h2>🔒 Informes Económicos</h2>
-        <div style="color:#94a3b8;font-size:13px;margin-bottom:20px;">Acceso exclusivo del Superadministrador</div>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div style="padding:8px;border-radius:6px;margin-bottom:10px;background:#334155;">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="password" name="password" placeholder="Contraseña especial" required autofocus
-                   style="width:100%;padding:12px;margin:10px 0;border-radius:6px;border:none;box-sizing:border-box;">
-            <button type="submit" style="width:100%;padding:12px;background:#dc2626;color:white;border:none;border-radius:6px;font-weight:bold;">Acceder</button>
-        </form>
-        <a href="{{ url_for('dashboard.index') }}" style="display:block;margin-top:15px;color:#93c5fd;font-size:13px;text-decoration:none;">← Volver al sistema</a>
-    </div>
+ <div style="background:#1e293b;padding:35px;border-radius:12px;width:380px;text-align:center;">
+ <h2>🔒 Informes Económicos</h2>
+ <div style="color:#94a3b8;font-size:13px;margin-bottom:20px;">Acceso exclusivo del Superadministrador</div>
+ {% with messages = get_flashed_messages(with_categories=true) %}
+ {% if messages %}
+ {% for category, message in messages %}
+ <div style="padding:8px;border-radius:6px;margin-bottom:10px;background:#334155;">{{ message }}</div>
+ {% endfor %}
+ {% endif %}
+ {% endwith %}
+ <form method="POST">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <input type="password" name="password" placeholder="Contraseña especial" required autofocus
+ style="width:100%;padding:12px;margin:10px 0;border-radius:6px;border:none;box-sizing:border-box;">
+ <button type="submit" style="width:100%;padding:12px;background:#dc2626;color:white;border:none;border-radius:6px;font-weight:bold;">Acceder</button>
+ </form>
+ <a href="{{ url_for('dashboard.index') }}" style="display:block;margin-top:15px;color:#93c5fd;font-size:13px;text-decoration:none;">← Volver al sistema</a>
+ </div>
 </body>
 </html>
 """
@@ -988,112 +1025,112 @@ INFORMES_LISTA_TEMPLATE = """
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Informes Económicos</title></head>
 <body style="font-family:Arial;background:#f1f5f9;margin:0;">
-    <div style="background:#0f172a;color:white;padding:15px 25px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <div>
-            <h2 style="margin:0;">📊 Informes Económicos Confidenciales</h2>
-            <small>Caja Efectivo y Caja Bancaria</small>
-        </div>
-        <a href="{{ url_for('superadmin.boveda') }}" style="background:#64748b;color:white;padding:8px 12px;text-decoration:none;border-radius:6px;">Bóveda</a>
-    </div>
-    <div style="padding:25px;">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div style="padding:10px;border-radius:8px;margin-bottom:15px;color:white;background:#334155;">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+ <div style="background:#0f172a;color:white;padding:15px 25px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+ <div>
+ <h2 style="margin:0;">📊 Informes Económicos Confidenciales</h2>
+ <small>Caja Efectivo y Caja Bancaria</small>
+ </div>
+ <a href="{{ url_for('superadmin.boveda') }}" style="background:#64748b;color:white;padding:8px 12px;text-decoration:none;border-radius:6px;">Bóveda</a>
+ </div>
+ <div style="padding:25px;">
+ {% with messages = get_flashed_messages(with_categories=true) %}
+ {% if messages %}
+ {% for category, message in messages %}
+ <div style="padding:10px;border-radius:8px;margin-bottom:15px;color:white;background:#334155;">{{ message }}</div>
+ {% endfor %}
+ {% endif %}
+ {% endwith %}
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:15px;margin-bottom:25px;">
-            <div style="background:white;padding:18px;border-radius:10px;">
-                <h3 style="margin-top:0;">📅 Informe Diario</h3>
-                <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='diario') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="date" name="fecha" value="{{ hoy }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
-                    <button type="submit" style="background:#2563eb;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Diario</button>
-                </form>
-            </div>
-            <div style="background:white;padding:18px;border-radius:10px;">
-                <h3 style="margin-top:0;">🗓️ Informe Semanal</h3>
-                <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='semanal') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="date" name="fecha_fin" value="{{ hoy }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
-                    <button type="submit" style="background:#16a34a;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Semanal</button>
-                </form>
-            </div>
-            <div style="background:white;padding:18px;border-radius:10px;">
-                <h3 style="margin-top:0;">📆 Informe Mensual</h3>
-                <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='mensual') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="mes" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
-                        <option value="1">Enero</option><option value="2">Febrero</option>
-                        <option value="3">Marzo</option><option value="4">Abril</option>
-                        <option value="5">Mayo</option><option value="6">Junio</option>
-                        <option value="7">Julio</option><option value="8">Agosto</option>
-                        <option value="9">Septiembre</option><option value="10">Octubre</option>
-                        <option value="11">Noviembre</option><option value="12">Diciembre</option>
-                    </select>
-                    <input type="number" name="anio" value="{{ now.year }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
-                    <button type="submit" style="background:#0891b2;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Mensual</button>
-                </form>
-            </div>
-        </div>
+ <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:15px;margin-bottom:25px;">
+ <div style="background:white;padding:18px;border-radius:10px;">
+ <h3 style="margin-top:0;">📅 Informe Diario</h3>
+ <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='diario') }}">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <input type="date" name="fecha" value="{{ hoy }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+ <button type="submit" style="background:#2563eb;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Diario</button>
+ </form>
+ </div>
+ <div style="background:white;padding:18px;border-radius:10px;">
+ <h3 style="margin-top:0;">🗓️ Informe Semanal</h3>
+ <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='semanal') }}">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <input type="date" name="fecha_fin" value="{{ hoy }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+ <button type="submit" style="background:#16a34a;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Semanal</button>
+ </form>
+ </div>
+ <div style="background:white;padding:18px;border-radius:10px;">
+ <h3 style="margin-top:0;">📆 Informe Mensual</h3>
+ <form method="POST" action="{{ url_for('superadmin.informes_generar', tipo='mensual') }}">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <select name="mes" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+ <option value="1">Enero</option><option value="2">Febrero</option>
+ <option value="3">Marzo</option><option value="4">Abril</option>
+ <option value="5">Mayo</option><option value="6">Junio</option>
+ <option value="7">Julio</option><option value="8">Agosto</option>
+ <option value="9">Septiembre</option><option value="10">Octubre</option>
+ <option value="11">Noviembre</option><option value="12">Diciembre</option>
+ </select>
+ <input type="number" name="anio" value="{{ now.year }}" style="width:100%;padding:9px;margin-bottom:10px;box-sizing:border-box;">
+ <button type="submit" style="background:#0891b2;color:white;padding:9px 12px;border:none;border-radius:6px;">Generar Mensual</button>
+ </form>
+ </div>
+ </div>
 
-        <div style="background:white;padding:15px;border-radius:10px;margin-bottom:20px;">
-            <form method="GET" action="{{ url_for('superadmin.informes_lista') }}">
-                <strong>Filtrar por tipo:</strong>
-                <select name="tipo" onchange="this.form.submit()">
-                    <option value="" {% if not tipo %}selected{% endif %}>Todos</option>
-                    <option value="Diario" {% if tipo == 'Diario' %}selected{% endif %}>Diario</option>
-                    <option value="Semanal" {% if tipo == 'Semanal' %}selected{% endif %}>Semanal</option>
-                    <option value="Mensual" {% if tipo == 'Mensual' %}selected{% endif %}>Mensual</option>
-                </select>
-            </form>
-        </div>
+ <div style="background:white;padding:15px;border-radius:10px;margin-bottom:20px;">
+ <form method="GET" action="{{ url_for('superadmin.informes_lista') }}">
+ <strong>Filtrar por tipo:</strong>
+ <select name="tipo" onchange="this.form.submit()">
+ <option value="" {% if not tipo %}selected{% endif %}>Todos</option>
+ <option value="Diario" {% if tipo == 'Diario' %}selected{% endif %}>Diario</option>
+ <option value="Semanal" {% if tipo == 'Semanal' %}selected{% endif %}>Semanal</option>
+ <option value="Mensual" {% if tipo == 'Mensual' %}selected{% endif %}>Mensual</option>
+ </select>
+ </form>
+ </div>
 
-        <div style="overflow-x:auto;">
-        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;">
-            <thead>
-                <tr style="background:#0f172a;color:white;">
-                    <th>Tipo</th><th>Período</th><th>Ingresos</th>
-                    <th>Salidas</th><th>Saldo Total</th><th>Generado</th><th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for informe in informes %}
-                <tr>
-                    <td>{{ informe.tipo_informe }}</td>
-                    <td>{{ informe.fecha_inicio.strftime('%d/%m/%Y') }}{% if informe.fecha_inicio != informe.fecha_fin %} al {{ informe.fecha_fin.strftime('%d/%m/%Y') }}{% endif %}</td>
-                    <td style="color:#16a34a;font-weight:bold;">Bs. {{ '%.2f'|format(informe.total_ingresos or 0) }}</td>
-                    <td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(informe.total_gastos or 0) }}</td>
-                    <td style="font-weight:bold;">Bs. {{ '%.2f'|format(informe.saldo_total or 0) }}</td>
-                    <td>{{ informe.fecha_generacion.strftime('%d/%m/%Y %H:%M') }}</td>
-                    <td>
-                        <a href="{{ url_for('superadmin.informes_ver', id=informe.id) }}" style="background:#2563eb;color:white;padding:6px 10px;text-decoration:none;border-radius:6px;">Ver</a>
-                        <form method="POST" action="{{ url_for('superadmin.informes_eliminar', id=informe.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar este informe?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" style="background:#dc2626;color:white;padding:6px 10px;border:none;border-radius:6px;">X</button>
-                        </form>
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="7">No hay informes generados todavía.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
+ <div style="overflow-x:auto;">
+ <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;">
+ <thead>
+ <tr style="background:#0f172a;color:white;">
+ <th>Tipo</th><th>Período</th><th>Ingresos</th>
+ <th>Salidas</th><th>Saldo Total</th><th>Generado</th><th>Acciones</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for informe in informes %}
+ <tr>
+ <td>{{ informe.tipo_informe }}</td>
+ <td>{{ informe.fecha_inicio.strftime('%d/%m/%Y') }}{% if informe.fecha_inicio != informe.fecha_fin %} al {{ informe.fecha_fin.strftime('%d/%m/%Y') }}{% endif %}</td>
+ <td style="color:#16a34a;font-weight:bold;">Bs. {{ '%.2f'|format(informe.total_ingresos or 0) }}</td>
+ <td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(informe.total_gastos or 0) }}</td>
+ <td style="font-weight:bold;">Bs. {{ '%.2f'|format(informe.saldo_total or 0) }}</td>
+ <td>{{ informe.fecha_generacion.strftime('%d/%m/%Y %H:%M') }}</td>
+ <td>
+ <a href="{{ url_for('superadmin.informes_ver', id=informe.id) }}" style="background:#2563eb;color:white;padding:6px 10px;text-decoration:none;border-radius:6px;">Ver</a>
+ <form method="POST" action="{{ url_for('superadmin.informes_eliminar', id=informe.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar este informe?');">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <button type="submit" style="background:#dc2626;color:white;padding:6px 10px;border:none;border-radius:6px;">X</button>
+ </form>
+ </td>
+ </tr>
+ {% else %}
+ <tr><td colspan="7">No hay informes generados todavía.</td></tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ </div>
 
-        <div style="background:white;padding:15px;border-radius:10px;margin-top:25px;">
-            <h3>🔑 Cambiar contraseña especial de Informes</h3>
-            <form method="POST" action="{{ url_for('superadmin.informes_cambiar_password') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="password" name="password_actual" placeholder="Contraseña actual" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
-                <input type="password" name="password_nueva" placeholder="Nueva contraseña" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
-                <input type="password" name="password_confirmar" placeholder="Confirmar nueva contraseña" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
-                <button type="submit" style="background:#0f172a;color:white;padding:9px 12px;border:none;border-radius:6px;">Cambiar contraseña</button>
-            </form>
-        </div>
-    </div>
+ <div style="background:white;padding:15px;border-radius:10px;margin-top:25px;">
+ <h3>🔑 Cambiar contraseña especial de Informes</h3>
+ <form method="POST" action="{{ url_for('superadmin.informes_cambiar_password') }}">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <input type="password" name="password_actual" placeholder="Contraseña actual" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
+ <input type="password" name="password_nueva" placeholder="Nueva contraseña" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
+ <input type="password" name="password_confirmar" placeholder="Confirmar nueva contraseña" required style="padding:9px;margin:5px;width:300px;max-width:100%;box-sizing:border-box;">
+ <button type="submit" style="background:#0f172a;color:white;padding:9px 12px;border:none;border-radius:6px;">Cambiar contraseña</button>
+ </form>
+ </div>
+ </div>
 </body>
 </html>
 """
@@ -1104,76 +1141,76 @@ INFORMES_VER_TEMPLATE = """
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Informe Económico</title></head>
 <body style="font-family:Arial;background:#f1f5f9;margin:0;">
-    <div style="background:#0f172a;color:white;padding:15px 25px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <div>
-            <h2 style="margin:0;">{% if informe.tipo_informe == 'Diario' %}📅 Informe Diario{% elif informe.tipo_informe == 'Semanal' %}🗓️ Informe Semanal{% else %}📆 Informe Mensual{% endif %}</h2>
-            <small>Período: {{ informe.fecha_inicio.strftime('%d/%m/%Y') }}{% if informe.fecha_inicio != informe.fecha_fin %} al {{ informe.fecha_fin.strftime('%d/%m/%Y') }}{% endif %}</small>
-        </div>
-        <div>
-            <a href="{{ url_for('superadmin.informes_lista') }}" style="background:#64748b;color:white;padding:8px 12px;text-decoration:none;border-radius:6px;margin-right:8px;">Volver</a>
-            <button onclick="window.print()" style="background:#0f172a;color:white;padding:8px 12px;border:1px solid #fff;border-radius:6px;">Imprimir</button>
-        </div>
-    </div>
-    <div style="padding:25px;">
-        <div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;margin-bottom:20px;">🔒 Documento confidencial.</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;margin-bottom:25px;">
-            <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #16a34a;">
-                <h3 style="margin-top:0;">💵 Caja Efectivo</h3>
-                <p>Ingresos del período: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.ingresos_efectivo or 0) }}</strong></p>
-                <p>Salidas del período: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.gastos_efectivo or 0) }}</strong></p>
-                <hr><p>Saldo acumulado: <strong>Bs. {{ '%.2f'|format(informe.saldo_efectivo or 0) }}</strong></p>
-            </div>
-            <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #2563eb;">
-                <h3 style="margin-top:0;">🏦 Caja Bancaria</h3>
-                <p>Ingresos del período: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.ingresos_bancario or 0) }}</strong></p>
-                <p>Salidas del período: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.gastos_bancario or 0) }}</strong></p>
-                <hr><p>Saldo acumulado: <strong>Bs. {{ '%.2f'|format(informe.saldo_bancario or 0) }}</strong></p>
-            </div>
-            <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #0f172a;">
-                <h3 style="margin-top:0;">📊 Resumen General</h3>
-                <p>Total ingresos: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.total_ingresos or 0) }}</strong></p>
-                <p>Total salidas: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.total_gastos or 0) }}</strong></p>
-                <hr><p>Saldo total: <strong>Bs. {{ '%.2f'|format(informe.saldo_total or 0) }}</strong></p>
-                <p>Generado: {{ informe.fecha_generacion.strftime('%d/%m/%Y %H:%M') }}</p>
-            </div>
-        </div>
+ <div style="background:#0f172a;color:white;padding:15px 25px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+ <div>
+ <h2 style="margin:0;">{% if informe.tipo_informe == 'Diario' %}📅 Informe Diario{% elif informe.tipo_informe == 'Semanal' %}🗓️ Informe Semanal{% else %}📆 Informe Mensual{% endif %}</h2>
+ <small>Período: {{ informe.fecha_inicio.strftime('%d/%m/%Y') }}{% if informe.fecha_inicio != informe.fecha_fin %} al {{ informe.fecha_fin.strftime('%d/%m/%Y') }}{% endif %}</small>
+ </div>
+ <div>
+ <a href="{{ url_for('superadmin.informes_lista') }}" style="background:#64748b;color:white;padding:8px 12px;text-decoration:none;border-radius:6px;margin-right:8px;">Volver</a>
+ <button onclick="window.print()" style="background:#0f172a;color:white;padding:8px 12px;border:1px solid #fff;border-radius:6px;">Imprimir</button>
+ </div>
+ </div>
+ <div style="padding:25px;">
+ <div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;margin-bottom:20px;">🔒 Documento confidencial.</div>
+ <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;margin-bottom:25px;">
+ <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #16a34a;">
+ <h3 style="margin-top:0;">💵 Caja Efectivo</h3>
+ <p>Ingresos del período: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.ingresos_efectivo or 0) }}</strong></p>
+ <p>Salidas del período: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.gastos_efectivo or 0) }}</strong></p>
+ <hr><p>Saldo acumulado: <strong>Bs. {{ '%.2f'|format(informe.saldo_efectivo or 0) }}</strong></p>
+ </div>
+ <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #2563eb;">
+ <h3 style="margin-top:0;">🏦 Caja Bancaria</h3>
+ <p>Ingresos del período: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.ingresos_bancario or 0) }}</strong></p>
+ <p>Salidas del período: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.gastos_bancario or 0) }}</strong></p>
+ <hr><p>Saldo acumulado: <strong>Bs. {{ '%.2f'|format(informe.saldo_bancario or 0) }}</strong></p>
+ </div>
+ <div style="background:white;padding:18px;border-radius:10px;border-top:6px solid #0f172a;">
+ <h3 style="margin-top:0;">📊 Resumen General</h3>
+ <p>Total ingresos: <strong style="color:#16a34a;">Bs. {{ '%.2f'|format(informe.total_ingresos or 0) }}</strong></p>
+ <p>Total salidas: <strong style="color:#dc2626;">Bs. {{ '%.2f'|format(informe.total_gastos or 0) }}</strong></p>
+ <hr><p>Saldo total: <strong>Bs. {{ '%.2f'|format(informe.saldo_total or 0) }}</strong></p>
+ <p>Generado: {{ informe.fecha_generacion.strftime('%d/%m/%Y %H:%M') }}</p>
+ </div>
+ </div>
 
-        <h3>🟢 Ingresos del período</h3>
-        <div style="overflow-x:auto;">
-        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;margin-bottom:25px;">
-            <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
-            <tbody>
-                {% for item in detalle_pagos %}
-                <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#16a34a;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
-                {% else %}<tr><td colspan="4">No hay ingresos en este período.</td></tr>{% endfor %}
-            </tbody>
-        </table>
-        </div>
+ <h3>🟢 Ingresos del período</h3>
+ <div style="overflow-x:auto;">
+ <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;margin-bottom:25px;">
+ <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
+ <tbody>
+ {% for item in detalle_pagos %}
+ <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#16a34a;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
+ {% else %}<tr><td colspan="4">No hay ingresos en este período.</td></tr>{% endfor %}
+ </tbody>
+ </table>
+ </div>
 
-        <h3>🔴 Gastos del período</h3>
-        <div style="overflow-x:auto;">
-        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;margin-bottom:25px;">
-            <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
-            <tbody>
-                {% for item in detalle_gastos %}
-                <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
-                {% else %}<tr><td colspan="4">No hay gastos en este período.</td></tr>{% endfor %}
-            </tbody>
-        </table>
-        </div>
+ <h3>🔴 Gastos del período</h3>
+ <div style="overflow-x:auto;">
+ <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;margin-bottom:25px;">
+ <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
+ <tbody>
+ {% for item in detalle_gastos %}
+ <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
+ {% else %}<tr><td colspan="4">No hay gastos en este período.</td></tr>{% endfor %}
+ </tbody>
+ </table>
+ </div>
 
-        <h3>👷 Pagos al personal</h3>
-        <div style="overflow-x:auto;">
-        <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;">
-            <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
-            <tbody>
-                {% for item in detalle_personal %}
-                <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
-                {% else %}<tr><td colspan="4">No hay pagos al personal en este período.</td></tr>{% endfor %}
-            </tbody>
-        </table>
-        </div>
-    </div>
+ <h3>👷 Pagos al personal</h3>
+ <div style="overflow-x:auto;">
+ <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;background:white;">
+ <thead><tr style="background:#0f172a;color:white;"><th>Fecha</th><th>Detalle</th><th>Método</th><th>Monto</th></tr></thead>
+ <tbody>
+ {% for item in detalle_personal %}
+ <tr><td>{{ item.fecha }}</td><td>{{ item.detalle }}</td><td>{{ item.metodo }}</td><td style="color:#dc2626;font-weight:bold;">Bs. {{ '%.2f'|format(item.monto or 0) }}</td></tr>
+ {% else %}<tr><td colspan="4">No hay pagos al personal en este período.</td></tr>{% endfor %}
+ </tbody>
+ </table>
+ </div>
+ </div>
 </body>
 </html>
 """
@@ -1183,73 +1220,73 @@ PWA_PASSWORD_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cambiar Contraseña PWA</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <style>
-        body { background: #f1f5f9; font-family: Arial, sans-serif; }
-        .card-pwa { max-width: 500px; margin: 40px auto; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-        .card-header-pwa { background: #0f172a; color: white; padding: 20px; border-radius: 12px 12px 0 0; }
-        .card-body-pwa { background: white; padding: 30px; border-radius: 0 0 12px 12px; }
-        .form-control { min-height: 48px; font-size: 16px; }
-        .btn-cambiar { min-height: 48px; font-weight: bold; }
-        .password-actual { background: #fef3c7; color: #92400e; padding: 10px 15px; border-radius: 8px; font-family: monospace; font-size: 1.1rem; letter-spacing: 2px; text-align: center; margin-bottom: 20px; border: 2px dashed #f59e0b; word-break: break-all; }
-    </style>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Cambiar Contraseña PWA</title>
+ <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+ <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+ <style>
+ body { background: #f1f5f9; font-family: Arial, sans-serif; }
+ .card-pwa { max-width: 500px; margin: 40px auto; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+ .card-header-pwa { background: #0f172a; color: white; padding: 20px; border-radius: 12px 12px 0 0; }
+ .card-body-pwa { background: white; padding: 30px; border-radius: 0 0 12px 12px; }
+ .form-control { min-height: 48px; font-size: 16px; }
+ .btn-cambiar { min-height: 48px; font-weight: bold; }
+ .password-actual { background: #fef3c7; color: #92400e; padding: 10px 15px; border-radius: 8px; font-family: monospace; font-size: 1.1rem; letter-spacing: 2px; text-align: center; margin-bottom: 20px; border: 2px dashed #f59e0b; word-break: break-all; }
+ </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card card-pwa">
-            <div class="card-header-pwa text-center">
-                <h4 class="mb-1"><i class="bi bi-shield-lock-fill"></i> Cambiar Contraseña PWA</h4>
-                <small class="text-white-50">Protege el acceso global al sistema</small>
-            </div>
-            <div class="card-body-pwa">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category if category in ['success','danger','warning','info'] else 'secondary' }} alert-dismissible fade show">
-                                {{ message }}
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
+ <div class="container">
+ <div class="card card-pwa">
+ <div class="card-header-pwa text-center">
+ <h4 class="mb-1"><i class="bi bi-shield-lock-fill"></i> Cambiar Contraseña PWA</h4>
+ <small class="text-white-50">Protege el acceso global al sistema</small>
+ </div>
+ <div class="card-body-pwa">
+ {% with messages = get_flashed_messages(with_categories=true) %}
+ {% if messages %}
+ {% for category, message in messages %}
+ <div class="alert alert-{{ category if category in ['success','danger','warning','info'] else 'secondary' }} alert-dismissible fade show">
+ {{ message }}
+ <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+ </div>
+ {% endfor %}
+ {% endif %}
+ {% endwith %}
 
-                <div class="mb-3">
-                    <label class="form-label fw-bold text-muted">Contraseña actual:</label>
-                    <div class="password-actual">{{ password_actual }}</div>
-                </div>
+ <div class="mb-3">
+ <label class="form-label fw-bold text-muted">Contraseña actual:</label>
+ <div class="password-actual">{{ password_actual }}</div>
+ </div>
 
-                <form method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold"><i class="bi bi-key-fill text-warning"></i> Confirmar contraseña actual</label>
-                        <input type="password" name="password_actual" class="form-control" placeholder="Escriba la contraseña actual" required autofocus>
-                    </div>
-                    <hr>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold"><i class="bi bi-key-fill text-success"></i> Nueva contraseña (mínimo 8 caracteres)</label>
-                        <input type="password" name="password_nueva" class="form-control" placeholder="Escriba la nueva contraseña" required minlength="8">
-                    </div>
-                    <div class="mb-4">
-                        <label class="form-label fw-bold"><i class="bi bi-check-circle-fill text-primary"></i> Confirmar nueva contraseña</label>
-                        <input type="password" name="password_confirmar" class="form-control" placeholder="Repita la nueva contraseña" required minlength="8">
-                    </div>
-                    <div class="d-flex justify-content-between gap-2">
-                        <a href="{{ url_for('superadmin.boveda') }}" class="btn btn-secondary flex-fill btn-cambiar">
-                            <i class="bi bi-arrow-left"></i> Volver
-                        </a>
-                        <button type="submit" class="btn btn-danger flex-fill btn-cambiar">
-                            <i class="bi bi-shield-lock-fill"></i> Cambiar
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+ <form method="POST">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <div class="mb-3">
+ <label class="form-label fw-bold"><i class="bi bi-key-fill text-warning"></i> Confirmar contraseña actual</label>
+ <input type="password" name="password_actual" class="form-control" placeholder="Escriba la contraseña actual" required autofocus>
+ </div>
+ <hr>
+ <div class="mb-3">
+ <label class="form-label fw-bold"><i class="bi bi-key-fill text-success"></i> Nueva contraseña (mínimo 8 caracteres)</label>
+ <input type="password" name="password_nueva" class="form-control" placeholder="Escriba la nueva contraseña" required minlength="8">
+ </div>
+ <div class="mb-4">
+ <label class="form-label fw-bold"><i class="bi bi-check-circle-fill text-primary"></i> Confirmar nueva contraseña</label>
+ <input type="password" name="password_confirmar" class="form-control" placeholder="Repita la nueva contraseña" required minlength="8">
+ </div>
+ <div class="d-flex justify-content-between gap-2">
+ <a href="{{ url_for('superadmin.boveda') }}" class="btn btn-secondary flex-fill btn-cambiar">
+ <i class="bi bi-arrow-left"></i> Volver
+ </a>
+ <button type="submit" class="btn btn-danger flex-fill btn-cambiar">
+ <i class="bi bi-shield-lock-fill"></i> Cambiar
+ </button>
+ </div>
+ </form>
+ </div>
+ </div>
+ </div>
+ <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 """
@@ -1299,7 +1336,7 @@ def informes_login():
         except Exception as e:
             flash(f'❌ Error al validar: {str(e)}', 'danger')
 
-    return render_template_string(INFORMES_LOGIN_TEMPLATE)
+        return render_template_string(INFORMES_LOGIN_TEMPLATE)
 
 
 @superadmin_bp.route('/informes/logout')
@@ -1516,7 +1553,7 @@ def configuracion_anio_escolar():
                     cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
                     if cfg:
                         cfg.valor = valor
-                        actualizados += 1
+                    actualizados += 1
 
             db.session.commit()
             flash(f'✅ Configuración del año escolar actualizada ({actualizados} parámetros).', 'success')
@@ -1634,7 +1671,7 @@ def configuracion_institucion():
     logo_url = None
     if configs.get('institucion_logo'):
         logo_url = url_for('static', filename=configs['institucion_logo'])
-    
+        
     return render_template(
         'superadmin/configuracion_institucion.html',
         configs=configs,

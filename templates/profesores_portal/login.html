@@ -64,7 +64,7 @@
             <i class="fas fa-chalkboard-teacher fa-3x text-info"></i>
         </div>
         <h3>Portal del Personal Docente</h3>
-        <p class="text-light mb-0 small">Colegio Dr. Antonio Vaca Díez - Riberalta</p>
+        <p class="text-light mb-0 small">Plataforma de Gestión Académica</p>
     </div>
 
     <div class="portal-body">
@@ -79,7 +79,7 @@
             {% endif %}
         {% endwith %}
 
-        <form autocomplete="off" method="POST" action="{{ url_for('profesores_portal.login') }}">
+        <form method="POST" action="{{ url_for('profesores_portal.login') }}">
             <div class="form-floating mb-3">
                 <input type="text" name="usuario" class="form-control" id="inputUsuario" placeholder="Usuario" required autofocus>
                 <label for="inputUsuario"><i class="fas fa-user me-2"></i>Usuario Docente</label>

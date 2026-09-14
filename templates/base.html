@@ -9,37 +9,22 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-    <!-- FAVICON DINÁMICO (LOGO DEL NAVEGADOR) -->
-    {% set inst_head = institucion if institucion is defined and institucion else {} %}
-    {% set favicon_file = inst_head.get('institucion_logo') or 'uploads/logo_institucion.png' %}
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename=favicon_file) }}">
-    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename=favicon_file) }}">
-
     <title>
         {% block title %}
-            {{ inst_head.get('institucion_linea1') or 'Sistema de Gestión Escolar' }}
+        {% if institucion and institucion.get('institucion_linea1') %}{{ institucion.get('institucion_linea1') }}{% else %}Sistema de Gestión Escolar{% endif %}
         {% endblock %}
     </title>
 
     <!-- Bootstrap 5 -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
-          rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 
     <style>
         body {
             background-color: #f1f5f9;
             font-family: Arial, Helvetica, sans-serif;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-
-        .main-content {
-            margin-top: 0 !important;
-            padding-top: 0 !important;
         }
 
         .wrapper {
@@ -536,7 +521,7 @@
     <meta name="theme-color" content="#1a237e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Colegio Vaca Díez">
+    <meta name="apple-mobile-web-app-title" content="{{ institucion.get('institucion_linea1', 'Sistema Escolar') if institucion else 'Sistema Escolar' }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 
     <!-- Registrar Service Worker -->
@@ -567,148 +552,145 @@
         <!-- =============================================================== -->
 
         <nav id="sidebar">
-    <!-- LOGO Y NOMBRE DE LA INSTITUCIÓN -->
-        <!-- LOGO Y NOMBRE DE LA INSTITUCIÓN -->
-    <div class="sidebar-brand">
-        {% set inst = institucion if institucion is defined and institucion else {} %}
-        {% set logo_file = inst.get('institucion_logo') or 'uploads/logo_institucion.png' %}
-        
-        <img src="{{ url_for('static', filename=logo_file) }}" 
-             alt="Logo Institucional" class="logo-img"
-             onerror="this.onerror=null; this.src='{{ url_for('static', filename='uploads/logo_institucion.png') }}';">
-        
-        <h5>
-            {{ inst.get('institucion_linea1') or 'Colegio Dr. Antonio Vaca Díez' }}
-        </h5>
-        
-        {% set linea2 = inst.get('institucion_linea2') or 'Riberalta - Beni' %}
-        <div style="font-size: 11px; color: #94a3b8; line-height: 1.1;">
-            {{ linea2 }}
-        </div>
-        
-        {% if inst.get('institucion_linea3') %}
-        <div style="font-size: 10px; color: #64748b; line-height: 1.1;">
-            {{ inst['institucion_linea3'] }}
-        </div>
-        {% endif %}
-        <small>Avrora Soft - Vibola LLC</small>
-    </div><!-- ⭐ MENÚ COMPACTO SIN ETIQUETAS DE GRUPO -->
-    <div class="sidebar-menu">
-        <a class="nav-link" href="/dashboard/">
-            <i class="bi bi-speedometer2"></i>
-            Dashboard
-        </a>
+            <!-- LOGO Y NOMBRE DE LA INSTITUCIÓN -->
+            <div class="sidebar-brand">
+                {% if institucion and institucion.get('institucion_logo') %}
+                <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-img">
+                {% endif %}
 
-        <a class="nav-link" href="/estudiantes/">
-            <i class="bi bi-mortarboard-fill"></i>
-            Estudiantes
-        </a>
-        <!-- MÓDULO DE PAGOS Y DEUDORES -->
-        <a class="nav-link" href="{{ url_for('pagos.index') }}">
-            <i class="bi bi-cash-stack"></i>
-            <span>Gestión de Pagos</span>
-        </a>
-        <a class="nav-link text-danger" href="{{ url_for('pagos.reporte_deudores') }}">
-            <i class="bi bi-exclamation-octagon-fill"></i>
-            <span>Deudores por Curso</span>
-        </a>
+                <h5>
+                    {{ institucion.get('institucion_linea1', 'Sistema de Gestión Escolar') if institucion else 'Sistema de Gestión Escolar' }}
+                </h5>
+                {% if institucion and institucion.get('institucion_linea2') %}
+                <div style="font-size: 11px; color: #94a3b8; line-height: 1.1;">
+                    {{ institucion['institucion_linea2'] }}
+                </div>
+                {% endif %}
+                {% if institucion and institucion.get('institucion_linea3') %}
+                <div style="font-size: 10px; color: #64748b; line-height: 1.1;">
+                    {{ institucion['institucion_linea3'] }}
+                </div>
+                {% endif %}
+                <small>Avrora Soft - Vibola LLC</small>
+            </div>
 
-        <a class="nav-link" href="/personal/profesores">
-            <i class="bi bi-person-workspace"></i>
-            Profesores
-        </a>
+            <!-- ⭐ MENÚ COMPACTO SIN ETIQUETAS DE GRUPO -->
+            <div class="sidebar-menu">
+                <a class="nav-link" href="/dashboard/">
+                    <i class="bi bi-speedometer2"></i>
+                    Dashboard
+                </a>
 
-        <a class="nav-link" href="/personal/administrativos">
-            <i class="bi bi-person-badge-fill"></i>
-            Personal Admin
-        </a>
+                <a class="nav-link" href="/estudiantes/">
+                    <i class="bi bi-mortarboard-fill"></i>
+                    Estudiantes
+                </a>
+                <!-- MÓDULO DE PAGOS Y DEUDORES -->
+                <a class="nav-link" href="{{ url_for('pagos.index') }}">
+                    <i class="bi bi-cash-stack"></i>
+                    <span>Gestión de Pagos</span>
+                </a>
+                <a class="nav-link text-danger" href="{{ url_for('pagos.reporte_deudores') }}">
+                    <i class="bi bi-exclamation-octagon-fill"></i>
+                    <span>Deudores por Curso</span>
+                </a>
 
-        <div class="sidebar-separator"></div>
+                <a class="nav-link" href="/personal/profesores">
+                    <i class="bi bi-person-workspace"></i>
+                    Profesores
+                </a>
 
-        <a class="nav-link" href="/faltas/">
-            <i class="bi bi-exclamation-triangle-fill"></i>
-            Faltas y Licencias
-        </a>
+                <a class="nav-link" href="/personal/administrativos">
+                    <i class="bi bi-person-badge-fill"></i>
+                    Personal Admin
+                </a>
 
-        <!-- Reportes de Caja (Dropdown adaptado a la estética nav-link) -->
-        <div class="nav-item dropdown px-3 my-1">
-            <a class="nav-link dropdown-toggle p-0" href="#" data-bs-toggle="dropdown">
-                <i class="bi bi-file-earmark-bar-graph"></i> Reportes de Caja
-            </a>
-            <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('reportes.economico_manana') }}">Cierre Mañana</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('reportes.economico_tarde') }}">Cierre Tarde</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{{ url_for('reportes.economico_general') }}">Reporte General</a></li>
-            </ul>
-        </div>
+                <div class="sidebar-separator"></div>
 
-        <!-- Control de Turno -->
-        {% if session.get('turno_activo') %}
-        <div class="nav-link text-warning fw-bold px-3">
-            <i class="bi bi-clock-history"></i> Turno: {{ session['turno_activo'] }}
-        </div>
-        <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
-            <i class="bi bi-stop-circle"></i> Cerrar Turno
-        </a>
-        {% else %}
-        <a class="nav-link text-primary fw-bold" href="{{ url_for('auth.login_turno') }}">
-            <i class="bi bi-play-circle"></i> Iniciar Turno
-        </a>
-        {% endif %}
+                <a class="nav-link" href="/faltas/">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    Faltas y Licencias
+                </a>
 
-        {% if session.get('superadmin_boveda') or session.get('superadmin_informes') %}
-        <a class="nav-link" href="/superadmin/informes">
-            <i class="bi bi-graph-up-arrow"></i>
-            Informes
-        </a>
-        
-        <a class="nav-link" href="/superadmin/configuracion_institucion">
-            <i class="bi bi-building"></i>
-            Configuración Institucional
-        </a>
-        
-        <a class="nav-link" href="/superadmin/configuracion_anio_escolar">
-            <i class="bi bi-calendar3"></i>
-            Configuración Año Escolar
-        </a>
-        {% endif %}
+                <!-- Reportes de Caja (Dropdown adaptado a la estética nav-link) -->
+                <div class="nav-item dropdown px-3 my-1">
+                    <a class="nav-link dropdown-toggle p-0" href="#" data-bs-toggle="dropdown">
+                        <i class="bi bi-file-earmark-bar-graph"></i> Reportes de Caja
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{{ url_for('reportes.economico_manana') }}">Cierre Mañana</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('reportes.economico_tarde') }}">Cierre Tarde</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('reportes.economico_general') }}">Reporte General</a></li>
+                    </ul>
+                </div>
 
-        <a class="nav-link" href="/caja/">
-            <i class="bi bi-cash-stack"></i>
-            Control de Caja
-        </a>
+                <!-- Control de Turno -->
+                {% if session.get('turno_activo') %}
+                <div class="nav-link text-warning fw-bold px-3">
+                    <i class="bi bi-clock-history"></i> Turno: {{ session['turno_activo'] }}
+                </div>
+                <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
+                    <i class="bi bi-stop-circle"></i> Cerrar Turno
+                </a>
+                {% else %}
+                <a class="nav-link text-primary fw-bold" href="{{ url_for('auth.login_turno') }}">
+                    <i class="bi bi-play-circle"></i> Iniciar Turno
+                </a>
+                {% endif %}
 
-        <a class="nav-link" href="/gastos/">
-            <i class="bi bi-receipt"></i>
-            Gastos
-        </a>
+                {% if session.get('superadmin_boveda') or session.get('superadmin_informes') %}
+                <a class="nav-link" href="/superadmin/informes">
+                    <i class="bi bi-graph-up-arrow"></i>
+                    Informes
+                </a>
 
-        <div class="sidebar-separator"></div>
+                <a class="nav-link" href="/superadmin/configuracion_institucion">
+                    <i class="bi bi-building"></i>
+                    Configuración Institucional
+                </a>
 
-        <a class="nav-link" href="/chat/">
-            <i class="bi bi-chat-dots-fill"></i>
-            Chat con Padres
-        </a>
+                <a class="nav-link" href="/superadmin/configuracion_anio_escolar">
+                    <i class="bi bi-calendar3"></i>
+                    Configuración Año Escolar
+                </a>
+                {% endif %}
 
-        <a class="nav-link" href="{{ url_for('estudiantes.lista_egresados') }}">
-            <i class="bi bi-archive-fill"></i>
-            Registro de Egresados
-        </a>
+                <a class="nav-link" href="/caja/">
+                    <i class="bi bi-cash-stack"></i>
+                    Control de Caja
+                </a>
 
-        <a class="nav-link" href="/profesor-portal/login">
-            <i class="bi bi-door-open-fill"></i>
-            Portal de Profesores
-        </a>
+                <a class="nav-link" href="/gastos/">
+                    <i class="bi bi-receipt"></i>
+                    Gastos
+                </a>
 
-        <div class="sidebar-separator"></div>
+                <div class="sidebar-separator"></div>
 
-        <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
-            <i class="bi bi-box-arrow-left"></i>
-            Cerrar Sesión
-        </a>
-    </div>
-</nav>
+                <a class="nav-link" href="/chat/">
+                    <i class="bi bi-chat-dots-fill"></i>
+                    Chat con Padres
+                </a>
+
+                <a class="nav-link" href="{{ url_for('estudiantes.lista_egresados') }}">
+                    <i class="bi bi-archive-fill"></i>
+                    Registro de Egresados
+                </a>
+
+                <a class="nav-link" href="/profesor-portal/login">
+                    <i class="bi bi-door-open-fill"></i>
+                    Portal de Profesores
+                </a>
+
+                <div class="sidebar-separator"></div>
+
+                <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
+                    <i class="bi bi-box-arrow-left"></i>
+                    Cerrar Sesión
+                </a>
+            </div>
+        </nav>
 
         <!-- =============================================================== -->
         <!-- CONTENIDO PRINCIPAL -->
@@ -720,25 +702,22 @@
             <div class="topbar d-flex justify-content-between align-items-center">
 
                 <div class="d-flex align-items-center gap-3">
-                    <button class="btn btn-outline-secondary btn-sm"
-                            type="button"
-                            id="sidebarToggle">
+                    <button class="btn btn-outline-secondary btn-sm" type="button" id="sidebarToggle">
                         <i class="bi bi-list"></i>
                     </button>
 
                     <!-- LOGO MINI EN LA TOPBAR -->
                     {% if institucion and institucion.get('institucion_logo') %}
-                    <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" 
-                         alt="Logo" class="logo-mini">
+                    <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-mini">
                     {% endif %}
 
                     <h5 class="mb-0">
                         {% block page_title %}
-                            {% if institucion %}
-                                {{ institucion.get('institucion_linea1', 'Sistema de Gestión Escolar') }}
-                            {% else %}
-                                Sistema de Gestión Escolar
-                            {% endif %}
+                        {% if institucion and institucion.get('institucion_linea1') %}
+                            {{ institucion.get('institucion_linea1') }}
+                        {% else %}
+                            Sistema de Gestión Escolar
+                        {% endif %}
                         {% endblock %}
                     </h5>
                 </div>
@@ -754,21 +733,18 @@
             <div class="content-area">
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category if category in ['success', 'danger', 'warning', 'info'] else 'secondary' }} alert-dismissible fade show"
-                                 role="alert">
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category if category in ['success', 'danger', 'warning', 'info'] else 'secondary' }} alert-dismissible fade show" role="alert">
 
-                                {{ message }}
+                    {{ message }}
 
-                                <button type="button"
-                                        class="btn-close"
-                                        data-bs-dismiss="alert">
-                                </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert">
+                    </button>
 
-                            </div>
-                        {% endfor %}
-                    {% endif %}
+                </div>
+                {% endfor %}
+                {% endif %}
                 {% endwith %}
 
                 {% block content %}{% endblock %}
@@ -778,11 +754,11 @@
             <!-- Pie de página -->
             <div class="footer">
                 © 2026 
-                {% if institucion %}
-                    {{ institucion.get('institucion_linea1', '') }}
+                {% if institucion and institucion.get('institucion_linea1') %}
+                    {{ institucion.get('institucion_linea1') }}
                     {% if institucion.get('institucion_linea2') %} - {{ institucion['institucion_linea2'] }}{% endif %}
                 {% else %}
-                    Colegio Dr. Antonio Vaca Díez
+                    Sistema de Gestión Escolar
                 {% endif %}
                 | Desarrollado por Avrora Soft - Vibola LLC
             </div>
@@ -817,39 +793,38 @@
 
     <!-- ⭐ INYECTAR TOKEN CSRF EN TODOS LOS FORMULARIOS POST -->
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var csrfToken = "{{ csrf_token() }}";
-        document.querySelectorAll('form').forEach(function(form) {
-            var method = (form.getAttribute('method') || 'get').toLowerCase();
-            if (method === 'post' && !form.querySelector('input[name="csrf_token"]')) {
-                var input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'csrf_token';
-                input.value = csrfToken;
-                form.appendChild(input);
-            }
+        document.addEventListener('DOMContentLoaded', function() {
+            var csrfToken = "{{ csrf_token() }}";
+            document.querySelectorAll('form').forEach(function(form) {
+                var method = (form.getAttribute('method') || 'get').toLowerCase();
+                if (method === 'post' && !form.querySelector('input[name="csrf_token"]')) {
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'csrf_token';
+                    input.value = csrfToken;
+                    form.appendChild(input);
+                }
+            });
         });
-    });
     </script>
 
     {% block extra_scripts %}{% endblock %}
 
-<script>
-(function(){
-    var VERSION = 'v20260819-limpieza';
-    if (localStorage.getItem('app_version') !== VERSION) {
-        localStorage.setItem('app_version', VERSION);
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
-        }
-        if ('caches' in window) {
-            caches.keys().then(function(ns){ ns.forEach(function(n){ caches.delete(n); }); });
-        }
-        location.reload(true);
-    }
-})();
-</script>
+    <script>
+        (function(){
+            var VERSION = 'v20260819-limpieza';
+            if (localStorage.getItem('app_version') !== VERSION) {
+                localStorage.setItem('app_version', VERSION);
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
+                }
+                if ('caches' in window) {
+                    caches.keys().then(function(ns){ ns.forEach(function(n){ caches.delete(n); }); });
+                }
+                location.reload(true);
+            }
+        })();
+    </script>
 </body>
 
 </html>
-
