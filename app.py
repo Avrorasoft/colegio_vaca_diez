@@ -40,6 +40,17 @@ app.config.from_object(Config)
 
 db.init_app(app)
 csrf = CSRFProtect(app)
+# ==============================================================================
+# BLINDAJE GLOBAL CONTRA ERRORES CSRF EN EL SETUP INICIAL
+# ==============================================================================
+@app.before_request
+def bypass_csrf_for_setup():
+    """Omite la validación CSRF global si el sistema no está configurado
+    o si la petición va dirigida estrictamente al asistente de instalación."""
+    if request.path == '/setup' or not _esta_configurado():
+        setattr(request, '_csrf_token_invalid', False)
+        # Fuerza la marca de exención para Flask-WTF en tiempo de ejecución
+        request.csrf_valid = True
 
 @app.context_processor
 def inject_now():
@@ -357,21 +368,29 @@ except Exception as e:
 
 @app.route('/')
 def index():
+    if not _esta_configurado():
+        return redirect(url_for('setup'))
     return redirect(url_for('auth.login_turno'))
 
 @app.route('/login')
 def redirect_login_raiz():
+    if not _esta_configurado():
+        return redirect(url_for('setup'))
     return redirect(url_for('auth.login_turno'))
 
 @app.route('/logout')
 def global_logout():
-    """Cierra cualquier sesión activa y redirige al login."""
+    """Cierra cualquier sesión activa y redirige al login o setup según corresponda."""
     session.clear()
     try:
         from flask_login import logout_user
         logout_user()
     except Exception:
         pass
+    
+    if not _esta_configurado():
+        return redirect(url_for('setup'))
+        
     try:
         return redirect(url_for('auth.login_turno'))
     except Exception:
@@ -471,7 +490,10 @@ def setup():
     
     return render_template_string(SETUP_TEMPLATE)
 
-csrf.exempt(setup)
+try:
+    csrf.exempt(setup)
+except Exception:
+    pass
 
 
 # ==============================================================================
