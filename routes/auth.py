@@ -11,7 +11,7 @@ import os
 import time
 import stat
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
-from models import db, ConfiguracionInstitucion
+from models import db, ConfiguracionInstitucion, Profesor
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -25,9 +25,39 @@ def login():
     }
 
     if request.method == 'POST':
-        usuario = request.form.get('usuario')
-        password = request.form.get('password')
-        return redirect(url_for('auth.login_turno'))
+        # Capturamos los campos del formulario con flexibilidad (usuario, username, password, etc.)
+        usuario = request.form.get('usuario') or request.form.get('username') or ''
+        password = request.form.get('password') or request.form.get('clave') or ''
+        
+        usuario = usuario.strip()
+        password = password.strip()
+
+        # 1. BLOQUEO ABSOLUTO: Si el usuario ingresado corresponde al C.I. o nombre de un profesor registrado, se rechaza de inmediato.
+        if usuario:
+            profesor_registrado = Profesor.query.filter(
+                (Profesor.ci == usuario) | (Profesor.nombres.ilike(f"%{usuario}%"))
+            ).first()
+            if profesor_registrado:
+                flash('Acceso denegado. Las credenciales de docentes no tienen autorización en el sistema general de administración.', 'danger')
+                return redirect(url_for('auth.login'))
+
+        # 2. CREDENCIALES MAESTRAS DE ADMINISTRACIÓN GENERAL
+        # Puedes cambiar aquí el usuario y contraseña maestra según prefieras
+        ADMIN_USER = "admin"
+        ADMIN_PASS = "admin2026"
+
+        # Si el formulario envía credenciales y coinciden, o si tu plantilla es de paso directo por turno:
+        if usuario or password:
+            if usuario == ADMIN_USER and password == ADMIN_PASS:
+                session['admin_autenticado'] = True
+                flash('Acceso concedido al sistema general de administración.', 'success')
+                return redirect(url_for('auth.login_turno'))
+            else:
+                flash('Usuario o contraseña de administración general incorrectos.', 'danger')
+                return redirect(url_for('auth.login'))
+        else:
+            # Si el formulario no maneja campos de texto y es de acceso directo al selector de turno:
+            return redirect(url_for('auth.login_turno'))
     
     return render_template('auth/login.html', institucion=institucion_dict)
 
@@ -35,7 +65,7 @@ def login():
 def login_turno():
     if request.method == 'POST':
         turno = request.form.get('turno')  # 'Mañana' o 'Tarde'
-        password = request.form.get('password')
+        password = request.form.get('password', '').strip()
         
         passwords_validas = {
             'Mañana': 'manana2026',
@@ -47,7 +77,7 @@ def login_turno():
             flash(f'Sesión iniciada correctamente en el Turno {turno}.', 'success')
             return redirect(url_for('estudiantes.index'))
         else:
-            flash('Contraseña incorrecta o turno inválido.', 'danger')
+            flash('Contraseña de turno incorrecta.', 'danger')
             
     return render_template('auth/login_turno.html')
 
@@ -55,13 +85,21 @@ def login_turno():
 def logout():
     session.clear()
     flash('Has cerrado sesión correctamente.', 'info')
-    return redirect(url_for('auth.login'))
+    response = redirect(url_for('auth.login'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @auth_bp.route('/logout-turno')
 def logout_turno():
     session.clear()
     flash('Sesión cerrada correctamente.', 'info')
-    return redirect(url_for('auth.login'))
+    response = redirect(url_for('auth.login'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @auth_bp.route('/sistema/reset-fabrica', methods=['POST'])
 def reset_fabrica():
