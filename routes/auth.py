@@ -25,14 +25,13 @@ def login():
     }
 
     if request.method == 'POST':
-        # Capturamos los campos del formulario con flexibilidad (usuario, username, password, etc.)
         usuario = request.form.get('usuario') or request.form.get('username') or ''
         password = request.form.get('password') or request.form.get('clave') or ''
         
         usuario = usuario.strip()
         password = password.strip()
 
-        # 1. BLOQUEO ABSOLUTO: Si el usuario ingresado corresponde al C.I. o nombre de un profesor registrado, se rechaza de inmediato.
+        # 1. BLOQUEO ABSOLUTO: Profesores prohibidos en administración general
         if usuario:
             profesor_registrado = Profesor.query.filter(
                 (Profesor.ci == usuario) | (Profesor.nombres.ilike(f"%{usuario}%"))
@@ -42,22 +41,19 @@ def login():
                 return redirect(url_for('auth.login'))
 
         # 2. CREDENCIALES MAESTRAS DE ADMINISTRACIÓN GENERAL
-        # Puedes cambiar aquí el usuario y contraseña maestra según prefieras
         ADMIN_USER = "admin"
         ADMIN_PASS = "admin2026"
 
-        # Si el formulario envía credenciales y coinciden, o si tu plantilla es de paso directo por turno:
-        if usuario or password:
-            if usuario == ADMIN_USER and password == ADMIN_PASS:
-                session['admin_autenticado'] = True
-                flash('Acceso concedido al sistema general de administración.', 'success')
-                return redirect(url_for('auth.login_turno'))
-            else:
-                flash('Usuario o contraseña de administración general incorrectos.', 'danger')
-                return redirect(url_for('auth.login'))
+        if usuario == ADMIN_USER and password == ADMIN_PASS:
+            session['admin_autenticado'] = True
+            # REGLA DE SEGURIDAD: Nos aseguramos de que ningún turno quede habilitado al ingresar
+            session.pop('turno_activo', None)
+            
+            flash('Acceso concedido al sistema general de administración.', 'success')
+            return redirect(url_for('estudiantes.index'))
         else:
-            # Si el formulario no maneja campos de texto y es de acceso directo al selector de turno:
-            return redirect(url_for('auth.login_turno'))
+            flash('Usuario o contraseña de administración general incorrectos.', 'danger')
+            return redirect(url_for('auth.login'))
     
     return render_template('auth/login.html', institucion=institucion_dict)
 
