@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iniciar Sesión - Colegio Dr. Antonio Vaca Díez</title>
+    <title>Iniciar Sesión - {{ institucion.institucion_linea1 if institucion else 'Sistema de Gestión Escolar' }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
@@ -45,8 +45,8 @@
 <div class="login-card">
     <div class="card-header-custom">
         <i class="bi bi-mortarboard-fill fs-1 d-block mb-2"></i>
-        <h1 class="h4 text-white fw-bold">{{ institucion.institucion_linea1 }}</h1>
-		<p class="text-muted small">{{ institucion.institucion_linea2 }}</p>
+        <h1 class="h4 text-white fw-bold">{{ institucion.institucion_linea1 if institucion else 'Sistema de Gestión Escolar' }}</h1>
+        <p class="text-white-50 small mb-0">{{ institucion.institucion_linea2 if institucion else '' }}</p>
     </div>
     <div class="card-body p-4">
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -66,14 +66,14 @@
                 <label for="username" class="form-label text-muted small fw-semibold">Usuario o Correo</label>
                 <div class="input-group">
                     <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-muted"></i></span>
-                    <input type="text" class="form-control border-start-0 ps-0" id="username" name="username" placeholder="Ingrese su usuario" required autofocus>
+                    <input type="text" class="form-control border-start-0 py-2 px-3" id="username" name="username" placeholder="Ingrese su usuario" required autofocus style="font-size: 0.95rem;">
                 </div>
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label text-muted small fw-semibold">Contraseña</label>
                 <div class="input-group">
                     <span class="input-group-text bg-light border-end-0"><i class="bi bi-lock text-muted"></i></span>
-                    <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="••••••••" required>
+                    <input type="password" class="form-control border-start-0 py-2 px-3" id="password" name="password" placeholder="••••••••" required style="font-size: 0.95rem;">
                 </div>
             </div>
             <div class="d-grid mt-4">
@@ -84,7 +84,7 @@
         </form>
     </div>
     <div class="card-footer bg-light text-center py-3 border-0">
-        <small class="text-muted">Plataforma de Gestión Académica &bull; Avrora Soft</small>
+        <small class="text-muted">Plataforma de Gestión Académica &bull; Avrora Soft - Vibola LLC</small>
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
