@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Planilla General del Personal{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-primary mb-0"><i class="bi bi-file-earmark-spreadsheet-fill"></i> Planilla General Consolidada</h3>
+            <p class="text-muted mb-0">Colegio Dr. Antonio Vaca Díez - Gestión {{ anio_actual }}</p>
+        </div>
+        <div>
+            <button onclick="window.print()" class="btn btn-dark btn-sm me-2">
+                <i class="bi bi-printer"></i> Imprimir Planilla
+            </button>
+            <a href="{{ url_for('personal.pagos_personal') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> Volver a Pagos
+            </a>
+        </div>
+    </div>
+
+    <!-- SECCIÓN 1: PROFESORES -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-mortarboard-fill"></i> Personal Docente (Profesores)</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>N°</th>
+                        <th>Apellidos y Nombres</th>
+                        <th>C.I.</th>
+                        <th>Especialidad / Turno</th>
+                        <th>Salario Base</th>
+                        <th>Adelantos</th>
+                        <th>Líquido Pagable</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in profesores %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td class="fw-bold">{{ p.apellidos }}, {{ p.nombres }}</td>
+                        <td>{{ p.ci or 'S/N' }}</td>
+                        <td>{{ p.especialidad or 'General' }} ({{ p.turno or 'Mañana' }})</td>
+                        <td>Bs. {{ '%.2f'|format(p.salario_base or 0) }}</td>
+                        <td class="text-danger">Bs. {{ '%.2f'|format(p.adelanto or 0) }}</td>
+                        <td class="text-success fw-bold">Bs. {{ '%.2f'|format(p.salario_neto or 0) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-3">No hay profesores registrados.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- SECCIÓN 2: PERSONAL ADMINISTRATIVO -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="bi bi-person-badge-fill"></i> Personal Administrativo</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>N°</th>
+                        <th>Apellidos y Nombres</th>
+                        <th>C.I.</th>
+                        <th>Cargo / Área</th>
+                        <th>Salario Base</th>
+                        <th>Adelantos</th>
+                        <th>Líquido Pagable</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in administrativos %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td class="fw-bold">{{ a.apellidos }}, {{ a.nombres }}</td>
+                        <td>{{ a.ci or 'S/N' }}</td>
+                        <td>{{ a.cargo }} ({{ a.area or 'General' }})</td>
+                        <td>Bs. {{ '%.2f'|format(a.salario_base or 0) }}</td>
+                        <td class="text-danger">Bs. {{ '%.2f'|format(a.adelanto or 0) }}</td>
+                        <td class="text-success fw-bold">Bs. {{ '%.2f'|format(a.salario_neto or 0) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-3">No hay personal administrativo registrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TARJETA DE RESUMEN GLOBAL -->
+    <div class="card shadow-sm bg-light border-dark">
+        <div class="card-body">
+            <h5 class="fw-bold text-dark mb-3"><i class="bi bi-calculator"></i> Resumen Consolidado de Planilla</h5>
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <h6 class="text-muted">Total Salarios Base</h6>
+                    <h4 class="text-primary fw-bold">Bs. {{ '%.2f'|format(gran_total_base) }}</h4>
+                </div>
+                <div class="col-md-4">
+                    <h6 class="text-muted">Total Adelantos Acumulados</h6>
+                    <h4 class="text-danger fw-bold">Bs. {{ '%.2f'|format(gran_total_adelantos) }}</h4>
+                </div>
+                <div class="col-md-4">
+                    <h6 class="text-muted">Total Líquido Pagable Consolidado</h6>
+                    <h4 class="text-success fw-bold">Bs. {{ '%.2f'|format(gran_total_neto) }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    nav, footer, .btn, a {
+        display: none !important;
+    }
+    body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+    .card {
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+    }
+    .container {
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+</style>
+{% endblock %}

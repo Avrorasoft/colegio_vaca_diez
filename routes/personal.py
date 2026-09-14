@@ -1003,7 +1003,7 @@ def registrar_adelanto(tipo, id):
             nombre_persona=f"{persona.apellidos}, {persona.nombres}",
             mes=mes_adelanto,
             anio=anio_adelanto,
-            monto_base=monto,
+            monto_base=persona.salario_base or 0.0,
             monto_adelanto=0.0,
             monto_neto_pagado=monto,
             fecha_pago=datetime.now().date(),
@@ -1098,10 +1098,6 @@ def descargar_recibo_personal(filename):
 
     return send_file(filepath, as_attachment=True, download_name=filename)
 
-
-# ==============================================================================
-# GENERAR RECIBO PDF DEL PERSONAL
-# ==============================================================================
 
 def generar_recibo_personal_pdf(pago, persona, tipo_db):
     """
@@ -1214,7 +1210,7 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
     # Número y fecha
     pago_id = pago.id or 0
     numero_recibo = f"REC-PER-{datetime.now().year}-{pago_id:04d}"
-    fecha_str = pago.fecha_pago.strftime('%d/%m/%Y')
+    fecha_str = pago.fecha_pago.strftime('%d/%m/%Y') if pago.fecha_pago else datetime.now().strftime('%d/%m/%Y')
 
     info_data = [[
         Paragraph(f"<b>N° Recibo:</b> {numero_recibo}", normal_style),
@@ -1276,20 +1272,13 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
     elements.append(trabajador_table)
     elements.append(Spacer(1, 0.1 * inch))
 
-    # Detalle del pago
-    # Mostrar los adelantos que se descontaron en este pago
-    # Se acumulan los adelantos hasta sumar el monto del descuento aplicado
-    adelantos_persona = PagoPersonal.query.filter_by(
+    # Detalle del pago (Filtrado estricto por el mes y año del pago actual)
+    adelantos_mes = PagoPersonal.query.filter_by(
         persona_id=pago.persona_id,
-        tipo='Adelanto'
+        tipo='Adelanto',
+        mes=pago.mes,
+        anio=pago.anio
     ).order_by(PagoPersonal.fecha_pago.asc()).all()
-
-    adelantos_descontados = []
-    suma_acumulada = 0.0
-    for ad in adelantos_persona:
-        if suma_acumulada < (pago.monto_adelanto or 0.0):
-            adelantos_descontados.append(ad)
-            suma_acumulada += ad.monto_neto_pagado or 0.0
 
     pago_data = [
         [Paragraph("<b>DETALLE FINANCIERO</b>", normal_style), '', ''],
@@ -1307,12 +1296,12 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
 
     red_style = ParagraphStyle('RedText', parent=normal_style, textColor=colors.red)
 
-    for ad in adelantos_descontados:
+    for ad in adelantos_mes:
         motivo_txt = f"(-) Adelanto ({ad.motivo or 'Sueldo'})"
         pago_data.append([
             Paragraph(motivo_txt, red_style),
             Paragraph(ad.fecha_pago.strftime('%d/%m/%Y') if ad.fecha_pago else '-', red_style),
-            Paragraph(f"- {ad.monto_neto_pagado:.2f}", red_style)
+            Paragraph(f"- {(ad.monto_neto_pagado or 0.0):.2f}", red_style)
         ])
 
     pago_data.append([
@@ -1399,7 +1388,6 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
     buffer.seek(0)
 
     return buffer.getvalue()
-
 
 # ==============================================================================
 # GENERADOR DE RECIBO DE ADELANTO
@@ -1614,3 +1602,36 @@ def api_adelantos_periodo(tipo, id):
         'total': total,
         'detalle': detalle
     })
+
+
+# ==============================================================================
+# PLANILLA GENERAL DE PAGOS (PROFESORES Y ADMINISTRATIVOS)
+# ==============================================================================
+
+@personal_bp.route('/planilla_general')
+def planilla_general():
+    """Muestra una planilla consolidada de todo el personal del colegio."""
+    profesores = Profesor.query.order_by(Profesor.apellidos.asc()).all()
+    administrativos = PersonalAdministrativo.query.order_by(PersonalAdministrativo.apellidos.asc()).all()
+
+    total_base_profesores = sum(p.salario_base or 0 for p in profesores)
+    total_adelantos_profesores = sum(p.adelanto or 0 for p in profesores)
+    total_neto_profesores = sum(p.salario_neto or 0 for p in profesores)
+
+    total_base_admins = sum(a.salario_base or 0 for a in administrativos)
+    total_adelantos_admins = sum(a.adelanto or 0 for a in administrativos)
+    total_neto_admins = sum(a.salario_neto or 0 for a in administrativos)
+
+    gran_total_base = total_base_profesores + total_base_admins
+    gran_total_adelantos = total_adelantos_profesores + total_adelantos_admins
+    gran_total_neto = total_neto_profesores + total_neto_admins
+
+    return render_template(
+        'personal/planilla_general.html',
+        profesores=profesores,
+        administrativos=administrativos,
+        gran_total_base=gran_total_base,
+        gran_total_adelantos=gran_total_adelantos,
+        gran_total_neto=gran_total_neto,
+        anio_actual=datetime.now().year
+    )
