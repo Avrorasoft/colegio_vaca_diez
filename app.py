@@ -2,8 +2,7 @@
 """
 ==============================================================================
 Archivo: app.py
-Proyecto: ASestud-Konetz - Sistema de Gestión Escolar
-Basado en: Colegio Dr. Antonio Vaca Díez
+Proyecto: ASestud - Sistema de Gestión Escolar
 Desarrollado por: Avrora Soft - Vibola LLC
 ==============================================================================
 """
@@ -55,6 +54,90 @@ def inject_institucion():
         return {'institucion': config_dict, 'config': config_dict}
     except Exception:
         return {'institucion': {}, 'config': {}}
+
+
+# ==============================================================================
+# SISTEMA DE AUTOREPARO Y MIGRACIÓN AUTOMÁTICA INTELIGENTE
+# ==============================================================================
+def verificar_y_autoreparar_sistema(app):
+    """
+    Verifica la integridad de carpetas, archivos y la base de datos.
+    Si detecta columnas o tablas faltantes, las actualiza automáticamente 
+    sin destruir los datos existentes.
+    """
+    with app.app_context():
+        root_path = app.root_path
+        static_dir = os.path.join(root_path, 'static')
+        instance_path = app.instance_path
+
+        print("🔍 [AUTOREPARO] Verificando integridad y estructura del sistema...")
+
+        # 1. Asegurar carpetas críticas
+        carpetas_criticas = [
+            os.path.join(static_dir, 'recibos_personal'),
+            os.path.join(static_dir, 'uploads'),
+            os.path.join(static_dir, 'backups'),
+            os.path.join(static_dir, 'boletines'),
+            os.path.join(static_dir, 'recibos')
+        ]
+        for carpeta in carpetas_criticas:
+            if not os.path.exists(carpeta):
+                try:
+                    os.makedirs(carpeta, exist_ok=True)
+                except Exception:
+                    pass
+
+        # 2. Asegurar logo por defecto
+        uploads_dir = os.path.join(static_dir, 'uploads')
+        default_logo_path = os.path.join(uploads_dir, 'logo_institucion.png')
+        if not os.path.exists(default_logo_path):
+            try:
+                os.makedirs(uploads_dir, exist_ok=True)
+                with open(default_logo_path, 'wb') as f:
+                    f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\r')
+            except Exception:
+                pass
+
+        # 3. Verificación y auto-actualización segura de tablas y columnas (Anti-Crash)
+        try:
+            db.create_all()
+            
+            import sqlite3
+            db_path = None
+            for path in [instance_path, root_path]:
+                if os.path.exists(path):
+                    for archivo in os.listdir(path):
+                        if archivo.endswith('.db'):
+                            db_path = os.path.join(path, archivo)
+                            break
+                    if db_path:
+                        break
+
+            if db_path and os.path.exists(db_path):
+                conexion = sqlite3.connect(db_path)
+                cursor = conexion.cursor()
+                
+                # Lista de columnas esenciales que el sistema garantiza en la tabla pagos
+                columnas_pagos = [
+                    ("tipo_concepto", "TEXT"),
+                    ("detalle_concepto", "TEXT")
+                ]
+                
+                cursor.execute("PRAGMA table_info(pagos);")
+                columnas_existentes = [info[1] for info in cursor.fetchall()]
+                
+                for col_nombre, col_tipo in columnas_pagos:
+                    if col_nombre not in columnas_existentes:
+                        cursor.execute(f"ALTER TABLE pagos ADD COLUMN {col_nombre} {col_tipo};")
+                        print(f"🛠️ [AUTOREPARO] Columna '{col_nombre}' añadida automáticamente a la tabla pagos.")
+                
+                conexion.commit()
+                conexion.close()
+
+            print("✅ [AUTOREPARO] Sistema íntegro y actualizado sin pérdida de datos.")
+
+        except Exception as e:
+            print(f"⚠️ [AUTOREPARO] Aviso al verificar esquema: {e}")
 
 
 # ==============================================================================
@@ -318,6 +401,23 @@ def setup():
             password_pwa = request.form.get('password_pwa', '').strip()
             password_admin = request.form.get('password_admin', '').strip()
             
+            # Recoger modo de contabilización elegido (3 opciones)
+            modo_contabilizacion = request.form.get('modo_contabilizacion', 'cero')
+            _set_clave('modo_contabilizacion', modo_contabilizacion)
+
+            # Si eligió personalizado, guardar las casillas seleccionadas
+            if modo_contabilizacion == 'personalizado':
+                _set_clave('incluir_haberes', '1' if request.form.get('incluir_haberes') else '0')
+                _set_clave('incluir_ingresos', '1' if request.form.get('incluir_ingresos') else '0')
+                _set_clave('incluir_egresos_generales', '1' if request.form.get('incluir_egresos_generales') else '0')
+            else:
+                _set_clave('incluir_haberes', '0')
+                _set_clave('incluir_ingresos', '0')
+                _set_clave('incluir_egresos_generales', '0')
+
+            # Registrar fecha exacta de instalación por defecto
+            _set_clave('fecha_instalacion', datetime.now().strftime('%Y-%m-%d'))
+            
             if not linea1:
                 flash('❌ El nombre de la institución (línea 1) es obligatorio.', 'danger')
                 return render_template_string(SETUP_TEMPLATE)
@@ -401,8 +501,8 @@ def login_pwa():
     nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestión Escolar')
 
     return render_template_string(LOGIN_TEMPLATE, error=error, 
-                                 nombre_institucion=nombre_institucion,
-                                 config=config)
+                                   nombre_institucion=nombre_institucion,
+                                   config=config)
 
 
 # ==============================================================================
@@ -415,7 +515,7 @@ SETUP_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>Configuración Inicial - Sistema de Gestión Escolar</title>
+    <title>Configuración Inicial - ASestud</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <style>
@@ -476,7 +576,7 @@ SETUP_TEMPLATE = """
         <div class="setup-header">
             <i class="bi bi-gear-fill"></i>
             <h2 class="mt-3 mb-1">Configuración Inicial</h2>
-            <small class="text-white-50">Configure los datos de su institución</small>
+            <small class="text-white-50">ASestud - Sistema de Gestión Escolar</small>
         </div>
         <div class="setup-body">
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -555,6 +655,45 @@ SETUP_TEMPLATE = """
                     <input type="file" name="logo" class="form-control" accept="image/*">
                     <small class="text-muted">Formatos: PNG, JPG, JPEG. Se usará como marca de agua en documentos.</small>
                 </div>
+
+                <h5 class="section-title">
+                    <i class="bi bi-cash-stack me-2"></i>Comportamiento Económico Inicial
+                </h5>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Seleccione el modo de contabilización:</label>
+                    <select name="modo_contabilizacion" id="modo_contabilizacion" class="form-select mb-3" onchange="togglePersonalizado(this.value)" required>
+                        <option value="cero" selected>1. Desde cero (Por defecto: Solo desde el momento de instalación en adelante)</option>
+                        <option value="enero_total">2. Histórico Total (Todo contabilizado desde el 1 de enero)</option>
+                        <option value="personalizado">3. Personalizado (Escoger mediante casillas lo que se desea incluir)</option>
+                    </select>
+
+                    <!-- Panel de Casillas (Oculto por defecto, se muestra si elige 'personalizado') -->
+                    <div id="panel_personalizado" class="card p-3 bg-light border" style="display: none;">
+                        <span class="fw-bold text-dark mb-2 d-block"><i class="bi bi-check2-square me-1"></i> Seleccione los rubros a contabilizar desde enero:</span>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="incluir_haberes" id="incluir_haberes" value="1">
+                            <label class="form-check-label text-dark" for="incluir_haberes">
+                                Incluir pago de haberes y sueldos del personal (desde enero)
+                            </label>
+                        </div>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="incluir_ingresos" id="incluir_ingresos" value="1">
+                            <label class="form-check-label text-dark" for="incluir_ingresos">
+                                Incluir ingresos históricos de caja / pensiones (desde enero)
+                            </label>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="incluir_egresos_generales" id="incluir_egresos_generales" value="1">
+                            <label class="form-check-label text-dark" for="incluir_egresos_generales">
+                                Incluir egresos y gastos operativos generales (desde enero)
+                            </label>
+                        </div>
+                    </div>
+                </div>
                 
                 <h5 class="section-title">
                     <i class="bi bi-shield-lock me-2"></i>Contraseñas de Acceso
@@ -580,6 +719,16 @@ SETUP_TEMPLATE = """
             </form>
         </div>
     </div>
+    <script>
+    function togglePersonalizado(valor) {
+        var panel = document.getElementById('panel_personalizado');
+        if (valor === 'personalizado') {
+            panel.style.display = 'block';
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+    </script>
 </body>
 </html>
 """
@@ -668,7 +817,7 @@ LOGIN_TEMPLATE = """
             {% if config.get('institucion_linea3') %}
             <div class="institucion-info" style="font-size: 1rem;">{{ config['institucion_linea3'] }}</div>
             {% endif %}
-            <small class="text-white-50">Sistema de Gestión Escolar</small>
+            <small class="text-white-50">ASestud</small>
         </div>
         <div class="login-body">
             {% if error %}
@@ -677,7 +826,7 @@ LOGIN_TEMPLATE = """
             </div>
             {% endif %}
 
-            <form method="POST">
+            <form method="POST" autocomplete="off">
                 <div class="mb-4">
                     <label class="form-label fw-bold">
                         <i class="bi bi-key-fill text-primary"></i> Contraseña de Acceso
@@ -686,7 +835,7 @@ LOGIN_TEMPLATE = """
                            name="password"
                            class="form-control"
                            placeholder="Ingrese la contraseña"
-                           autocomplete="off"
+                           autocomplete="new-password"
                            autofocus
                            required>
                 </div>
@@ -708,12 +857,19 @@ LOGIN_TEMPLATE = """
 
 
 # ==============================================================================
-# EJECUCIÓN DE LA APLICACIÓN
+# EJECUCIÓN DE LA APLICACIÓN Y AUTOREPARO
 # ==============================================================================
-
+import logging
+# Silenciar la advertencia del servidor de desarrollo de Werkzeug
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        # Ejecutar autoreparo y verificación inteligente antes de levantar tablas
+        try:
+            verificar_y_autoreparar_sistema(app)
+        except Exception as e:
+            print(f"⚠️ Aviso en autoreparo: {e}")
 
         # Configuración de clave secreta segura persistente
         ruta_key = os.path.join(os.getcwd(), '.secret_key')
