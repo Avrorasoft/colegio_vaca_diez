@@ -60,23 +60,28 @@
             {% endif %}
         {% endwith %}
 
+        <!-- FORMULARIO PROTEGIDO CONTRA AUTOGUARDADO -->
         <form method="POST" action="{{ url_for('auth.login') }}" autocomplete="off">
             {% if csrf_token is defined %}
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             {% endif %}
+
+            <!-- Campos trampa invisibles para engañar al gestor de contraseñas del navegador -->
+            <input type="text" name="fake_username_remember" style="display:none;" autocomplete="username">
+            <input type="password" name="fake_password_remember" style="display:none;" autocomplete="current-password">
             
             <div class="mb-3">
-                <label for="username" class="form-label text-muted small fw-semibold">Usuario o Correo</label>
+                <label for="username" class="form-label text-muted small fw-semibold">Usuario o Administrador</label>
                 <div class="input-group">
                     <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-muted"></i></span>
-                    <input type="text" class="form-control border-start-0 py-2 px-3" id="username" name="username" placeholder="Ingrese su usuario" required autofocus autocomplete="off" style="font-size: 0.95rem;">
+                    <input type="text" class="form-control border-start-0 py-2 px-3" id="username" name="username" placeholder="Ingrese su usuario" required autofocus autocomplete="off" readonly onfocus="this.removeAttribute('readonly');" style="font-size: 0.95rem;">
                 </div>
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label text-muted small fw-semibold">Contraseña</label>
                 <div class="input-group">
                     <span class="input-group-text bg-light border-end-0"><i class="bi bi-lock text-muted"></i></span>
-                    <input type="password" class="form-control border-start-0 py-2 px-3" id="password" name="password" placeholder="••••••••" required autocomplete="new-password" style="font-size: 0.95rem;">
+                    <input type="password" class="form-control border-start-0 py-2 px-3" id="password" name="password" placeholder="••••••••" required autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');" style="font-size: 0.95rem;">
                 </div>
             </div>
             <div class="d-grid mt-4">
