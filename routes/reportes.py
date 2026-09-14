@@ -22,25 +22,26 @@ def economico_manana():
         flash('Debe iniciar sesión para ver los reportes.', 'warning')
         return redirect(url_for('auth.login_turno'))
     
-    # 1. Ingresos
+    # 1. Ingresos del Turno Mañana
     pagos = Pago.query.filter_by(turno_responsable='Mañana', estado='Pagado').order_by(Pago.fecha_pago.desc()).all()
-    total_ingresos = sum(p.monto_pagado for p in pagos)
+    total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos (Gastos Operativos y Pagos al Personal)
-    gastos = Gasto.query.filter_by(turno_responsable='Mañana').all() if hasattr(Gasto, 'turno_responsable') else Gasto.query.all()
+    # 2. Egresos: Gastos Operativos
+    gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 
-    pagos_personal = PagoPersonal.query.filter_by(turno_responsable='Mañana').all() if hasattr(PagoPersonal, 'turno_responsable') else PagoPersonal.query.all()
-    total_personal = sum(p.monto for p in pagos_personal)
+    # 3. Egresos: Pagos al Personal
+    pagos_personal = PagoPersonal.query.all()
+    total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
     total_egresos = total_gastos + total_personal
-    balance_neto = total_ingresos - total_egresos
+    balance_neto = total - total_egresos
 
     return render_template('reportes/economico.html', 
                            pagos=pagos,
                            gastos=gastos,
                            pagos_personal=pagos_personal,
-                           total=total_ingresos,
+                           total=total,
                            total_gastos=total_gastos,
                            total_personal=total_personal,
                            total_egresos=total_egresos,
@@ -55,25 +56,26 @@ def economico_tarde():
         flash('Debe iniciar sesión para ver los reportes.', 'warning')
         return redirect(url_for('auth.login_turno'))
 
-    # 1. Ingresos
+    # 1. Ingresos del Turno Tarde
     pagos = Pago.query.filter_by(turno_responsable='Tarde', estado='Pagado').order_by(Pago.fecha_pago.desc()).all()
-    total_ingresos = sum(p.monto_pagado for p in pagos)
+    total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos (Gastos Operativos y Pagos al Personal)
-    gastos = Gasto.query.filter_by(turno_responsable='Tarde').all() if hasattr(Gasto, 'turno_responsable') else Gasto.query.all()
+    # 2. Egresos: Gastos Operativos
+    gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 
-    pagos_personal = PagoPersonal.query.filter_by(turno_responsable='Tarde').all() if hasattr(PagoPersonal, 'turno_responsable') else PagoPersonal.query.all()
-    total_personal = sum(p.monto for p in pagos_personal)
+    # 3. Egresos: Pagos al Personal
+    pagos_personal = PagoPersonal.query.all()
+    total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
     total_egresos = total_gastos + total_personal
-    balance_neto = total_ingresos - total_egresos
+    balance_neto = total - total_egresos
 
     return render_template('reportes/economico.html', 
                            pagos=pagos,
                            gastos=gastos,
                            pagos_personal=pagos_personal,
-                           total=total_ingresos,
+                           total=total,
                            total_gastos=total_gastos,
                            total_personal=total_personal,
                            total_egresos=total_egresos,
@@ -100,7 +102,7 @@ def economico_general():
     total_gastos = sum(g.monto for g in gastos)
 
     pagos_personal = PagoPersonal.query.all()
-    total_personal = sum(p.monto for p in pagos_personal)
+    total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
     total_egresos = total_gastos + total_personal
     balance_general_neto = total_general - total_egresos

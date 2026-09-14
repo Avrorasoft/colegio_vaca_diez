@@ -6,9 +6,14 @@
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="fw-bold mb-0 text-primary"><i class="bi bi-file-earmark-bar-graph"></i> {{ titulo }}</h3>
-        <a href="{{ url_for('reportes.economico_general') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-arrow-left"></i> Ver Reporte General
-        </a>
+        <div>
+            <button onclick="window.print()" class="btn btn-dark btn-sm me-2">
+                <i class="bi bi-printer"></i> Imprimir Reporte
+            </button>
+            <a href="{{ url_for('reportes.economico_general') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> Ver Reporte General
+            </a>
+        </div>
     </div>
     
     <!-- TARJETAS DE RESUMEN FINANCIERO -->
@@ -119,10 +124,10 @@
                 <tbody>
                     {% for pp in pagos_personal %}
                     <tr>
-                        <td>{{ pp.personal_id }}</td>
-                        <td>{{ pp.concepto or 'Pago / Adelanto de Sueldo' }}</td>
-                        <td>{{ pp.fecha.strftime('%d/%m/%Y') if pp.fecha else '' }}</td>
-                        <td class="text-danger fw-bold">Bs. {{ '%.2f'|format(pp.monto) }}</td>
+                        <td>{{ pp.personal_id }} ({{ pp.nombre_persona }})</td>
+                        <td>{{ pp.motivo or 'Pago / Adelanto de Sueldo' }}</td>
+                        <td>{{ pp.fecha_pago.strftime('%d/%m/%Y') if pp.fecha_pago else '' }}</td>
+                        <td class="text-danger fw-bold">Bs. {{ '%.2f'|format(pp.monto_neto_pagado) }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="4" class="text-center text-muted py-3">No hay pagos al personal registrados.</td></tr>
@@ -132,4 +137,27 @@
         </div>
     </div>
 </div>
+
+<style>
+@media print {
+    /* Ocultar la barra de navegación, botones y enlaces al imprimir */
+    nav, footer, .btn, a {
+        display: none !important;
+    }
+    body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+    .card {
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+    }
+    .container {
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+</style>
 {% endblock %}
