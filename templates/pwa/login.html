@@ -103,6 +103,8 @@
         </div>
 
         <form method="POST" action="{{ url_for('pwa.login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
             <div class="form-floating mb-3">
                 <input type="text" name="ci" class="form-control" id="inputCi" placeholder="Número de C.I." required autofocus>
                 <label for="inputCi"><i class="fas fa-id-card me-2"></i>Cédula de Identidad (C.I.)</label>

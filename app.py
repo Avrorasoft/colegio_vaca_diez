@@ -10,6 +10,7 @@ Desarrollado por: Avrora Soft - Vibola LLC
 import os
 import secrets
 import string
+import gc
 from datetime import datetime, timezone, timedelta, date
 from functools import wraps
 
@@ -32,7 +33,26 @@ except Exception:
 
 # Zona horaria Bolivia (UTC-4)
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
-
+# ==============================================================================
+# VERIFICADOR DE REINICIO PENDIENTE AL ARRANCAR
+# ==============================================================================
+import glob
+bandera_inicio = os.path.join(os.path.abspath(os.path.dirname(__file__)), '.reset_pending')
+if os.path.exists(bandera_inicio):
+    print("🧹 [RESET] Limpiando bases de datos bloqueadas por reinicio pendiente...")
+    try:
+        os.remove(bandera_inicio)
+    except Exception:
+        pass
+    
+    # Buscar y destruir cualquier .db en instance/ o raíz
+    for ruta_busqueda in ['instance/*.db', 'instance/*-wal', 'instance/*-shm', '*.db', '*.db-wal', '*.db-shm']:
+        for archivo_encontrado in glob.glob(os.path.join(os.path.abspath(os.path.dirname(__file__)), ruta_busqueda)):
+            try:
+                os.remove(archivo_encontrado)
+                print(f"🗑️ [LIMPIEZA] Borrado exitoso: {archivo_encontrado}")
+            except Exception as ex:
+                print(f"⚠️ No se pudo borrar {archivo_encontrado}: {ex}")
 app = Flask(__name__)
 # Optimizacion de cache para activos estaticos
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
@@ -49,7 +69,6 @@ def bypass_csrf_for_setup():
     o si la petición va dirigida estrictamente al asistente de instalación."""
     if request.path == '/setup' or not _esta_configurado():
         setattr(request, '_csrf_token_invalid', False)
-        # Fuerza la marca de exención para Flask-WTF en tiempo de ejecución
         request.csrf_valid = True
 
 @app.context_processor
@@ -222,8 +241,30 @@ def rate_limit(max_intentos=5, ventana_segundos=300):
 
 
 # ==============================================================================
-# BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
+# BLOQUEO GLOBAL DE ACCESO Y TRANSACCIONES
 # ==============================================================================
+@app.before_request
+def verificar_autenticacion_global():
+    """Bloquea el acceso general si no se ha configurado el sistema o no hay sesión activa."""
+    if not _esta_configurado():
+        if request.path != '/setup' and not request.path.startswith('/static/'):
+            return redirect(url_for('setup'))
+        return
+
+    # Rutas públicas permitidas sin sesión
+    rutas_publicas = ['setup', 'login_pwa', 'static', 'global_logout', 'redirect_login_raiz']
+    if request.endpoint in rutas_publicas or (request.endpoint and 'static' in request.endpoint):
+        return
+
+    # Verificación estricta de sesión activa (PWA o Superadmin)
+    pwa_autenticado = session.get('pwa_autenticado', False)
+    es_superadmin = session.get('es_superadmin', False) or session.get('rol') == 'superadmin'
+
+    if not pwa_autenticado and not es_superadmin:
+        if request.path != '/login-pwa' and not request.path.startswith('/static/'):
+            return redirect(url_for('login_pwa'))
+
+
 @app.before_request
 def bloquear_transacciones_sin_turno():
     path = request.path.lower()
@@ -370,13 +411,13 @@ except Exception as e:
 def index():
     if not _esta_configurado():
         return redirect(url_for('setup'))
-    return redirect(url_for('auth.login_turno'))
+    return redirect(url_for('login_pwa'))
 
 @app.route('/login')
 def redirect_login_raiz():
     if not _esta_configurado():
         return redirect(url_for('setup'))
-    return redirect(url_for('auth.login_turno'))
+    return redirect(url_for('login_pwa'))
 
 @app.route('/logout')
 def global_logout():
@@ -392,18 +433,19 @@ def global_logout():
         return redirect(url_for('setup'))
         
     try:
-        return redirect(url_for('auth.login_turno'))
+        return redirect(url_for('login_pwa'))
     except Exception:
         return redirect('/')
 
 
 # ==============================================================================
-# ASISTENTE DE CONFIGURACIÓN INICIAL
+# ASISTENTE DE CONFIGURACIÓN INICIAL (LIBRE DE CSRF)
 # ==============================================================================
 
 @app.route('/setup', methods=['GET', 'POST'])
+@csrf.exempt
 def setup():
-    """Formulario de configuración inicial de la institución."""
+    """Formulario de configuración inicial de la institución exento de validación CSRF."""
     if _esta_configurado():
         return redirect(url_for('login_pwa'))
     
@@ -420,11 +462,9 @@ def setup():
             password_pwa = request.form.get('password_pwa', '').strip()
             password_admin = request.form.get('password_admin', '').strip()
             
-            # Recoger modo de contabilización elegido (3 opciones)
             modo_contabilizacion = request.form.get('modo_contabilizacion', 'cero')
             _set_clave('modo_contabilizacion', modo_contabilizacion)
 
-            # Si eligió personalizado, guardar las casillas seleccionadas
             if modo_contabilizacion == 'personalizado':
                 _set_clave('incluir_haberes', '1' if request.form.get('incluir_haberes') else '0')
                 _set_clave('incluir_ingresos', '1' if request.form.get('incluir_ingresos') else '0')
@@ -434,7 +474,6 @@ def setup():
                 _set_clave('incluir_ingresos', '0')
                 _set_clave('incluir_egresos_generales', '0')
 
-            # Registrar fecha exacta de instalación por defecto
             _set_clave('fecha_instalacion', datetime.now().strftime('%Y-%m-%d'))
             
             if not linea1:
@@ -490,10 +529,64 @@ def setup():
     
     return render_template_string(SETUP_TEMPLATE)
 
-try:
-    csrf.exempt(setup)
-except Exception:
-    pass
+
+# ==============================================================================
+# REINICIO A VALORES DE FÁBRICA (EXENTO DE CSRF Y DESACOPLADO)
+# ==============================================================================
+@app.route('/superadmin/reset-fabrica', methods=['POST'])
+@csrf.exempt
+def reset_fabrica():
+    """Restablece el sistema a fábrica mediante hilo desacoplado y exento de tokens."""
+    import threading
+    import time
+    import glob
+
+    try:
+        session.clear()
+        instance_dir = app.instance_path
+        
+        def destruir_archivos_en_fondo():
+            time.sleep(0.3)
+            try:
+                db.session.remove()
+                engine = db.get_engine(app)
+                if engine:
+                    engine.dispose()
+            except Exception:
+                pass
+
+            gc.collect()
+
+            patrones = [
+                os.path.join(instance_dir, '*.db'),
+                os.path.join(instance_dir, '*.db-wal'),
+                os.path.join(instance_dir, '*.db-shm'),
+                os.path.join(instance_dir, 'backups', '*.db'),
+                os.path.join(instance_dir, 'backups', '*.db-wal'),
+                os.path.join(instance_dir, 'backups', '*.db-shm')
+            ]
+
+            for patron in patrones:
+                for archivo in glob.glob(patron):
+                    try:
+                        os.chmod(archivo, 0o777)
+                        os.remove(archivo)
+                    except Exception:
+                        try:
+                            with open(archivo, 'w'):
+                                pass
+                            os.remove(archivo)
+                        except Exception:
+                            pass
+
+        threading.Thread(target=destruir_archivos_en_fondo, daemon=True).start()
+
+        flash('⚙️ Sistema restablecido a valores de fábrica exitosamente.', 'success')
+        return redirect(url_for('setup'))
+
+    except Exception as e:
+        flash(f'❌ Error al restablecer el sistema: {str(e)}', 'danger')
+        return redirect(url_for('index'))
 
 
 # ==============================================================================
@@ -503,7 +596,7 @@ except Exception:
 @app.route('/login-pwa', methods=['GET', 'POST'])
 @rate_limit(max_intentos=5, ventana_segundos=300)
 def login_pwa():
-    """Pantalla de contraseña para acceder a la PWA."""
+    """Pantalla de contraseña para acceder al sistema."""
     error = None
 
     if request.method == 'POST':
@@ -523,8 +616,8 @@ def login_pwa():
     nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestión Escolar')
 
     return render_template_string(LOGIN_TEMPLATE, error=error, 
-                                   nombre_institucion=nombre_institucion,
-                                   config=config)
+                                 nombre_institucion=nombre_institucion,
+                                 config=config)
 
 
 # ==============================================================================
@@ -613,6 +706,7 @@ SETUP_TEMPLATE = """
             {% endwith %}
 
             <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
                 <h5 class="section-title">
                     <i class="bi bi-building me-2"></i>Datos de la Institución
                 </h5>
@@ -849,6 +943,7 @@ LOGIN_TEMPLATE = """
             {% endif %}
 
             <form method="POST" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
                 <div class="mb-4">
                     <label class="form-label fw-bold">
                         <i class="bi bi-key-fill text-primary"></i> Contraseña de Acceso
