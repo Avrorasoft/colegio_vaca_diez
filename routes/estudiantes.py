@@ -514,7 +514,7 @@ def pagar_estudiante(id):
     es_admin = rol_usuario in ['admin', 'superadmin', 'administrador']
 
     if not turno_in_caja and not es_admin:
-        flash('❌ Cobro bloqueado: No existe un turno de caja activo. Debe iniciar turno.', 'danger')
+        flash('Cobro bloqueado: No existe un turno de caja activo. Debe iniciar turno.', 'danger')
         return redirect(url_for('auth.login_turno'))
 
     est = Estudiante.query.get_or_404(id)
@@ -534,7 +534,7 @@ def pagar_estudiante(id):
         if metodo_pago not in ['Efectivo', 'Bancario']:
             metodo_pago = 'Efectivo'
 
-        # ⭐ Captura estricta, limpia y formal del turno activo en sesión (Evita valores genéricos como "Caja")
+        # ⭐ Captura estricta, limpia y formal del turno activo en sesión
         turno_raw = (session.get('turno_activo') or session.get('turno') or session.get('caja_activa') or 'Mañana')
         turno_str = str(turno_raw).strip().lower()
         
@@ -547,7 +547,7 @@ def pagar_estudiante(id):
         else:
             responsable_turno = f"Turno {turno_raw.title()}"
 
-        # ⭐ COBRO DE OTROS CONCEPTOS (Inscripción, Poleras, Snack, Actividades)
+        # ⭐ COBRO DE OTROS CONCEPTOS
         if accion_cobro == 'otro_concepto':
             tipo_concepto = request.form.get('tipo_concepto', 'Otro').strip()
             detalle_concepto = request.form.get('detalle_concepto', '').strip()
@@ -556,7 +556,7 @@ def pagar_estudiante(id):
             try:
                 monto_abono = float(monto_abono_str)
             except ValueError:
-                flash('❌ Ingrese un monto válido.', 'danger')
+                flash('Ingrese un monto válido.', 'danger')
                 return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
             try:
@@ -578,21 +578,23 @@ def pagar_estudiante(id):
                 )
                 db.session.add(nuevo_pago)
                 db.session.commit()
-                flash(f'✅ Cobro de {tipo_concepto} (Bs. {monto_abono:.2f}) registrado con éxito.', 'success')
+                
+                recibo_id_str = f"REC-{anio_actual}-{nuevo_pago.id:04d}"
+                flash(f'¡COBRO REGISTRADO! Recibo: #{recibo_id_str} | Concepto: {tipo_concepto} | Monto: Bs. {monto_abono:.2f} | Caja: {responsable_turno}', 'success')
                 return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=nuevo_pago.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'❌ Error al registrar el cobro: {str(e)}', 'danger')
+                flash(f'Error al registrar el cobro: {str(e)}', 'danger')
                 return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-        # ⭐ COBRO MÚLTIPLE DE PENSIONES (CASILLAS DE VERIFICACIÓN)
+        # ⭐ COBRO MÚLTIPLE DE PENSIONES
         meses_seleccionados = request.form.getlist('meses_seleccionados')
         if not meses_seleccionados:
             mes_antiguo = request.form.get('mes_a_pagar', '').strip()
             if mes_antiguo:
                 meses_seleccionados = [mes_antiguo]
             else:
-                flash('❌ No seleccionó ningún mes de pensión para cancelar.', 'danger')
+                flash('No seleccionó ningún mes de pensión para cancelar.', 'danger')
                 return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
         monto_abono_str = request.form.get('monto_abono', '0').strip()
@@ -602,10 +604,9 @@ def pagar_estudiante(id):
             monto_abono_total = float(monto_abono_str)
             descuento_total = float(descuento_str) if descuento_str else 0.0
         except ValueError:
-            flash('❌ Ingrese montos válidos.', 'danger')
+            flash('Ingrese montos válidos.', 'danger')
             return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-        # Calcular la deuda total pendiente sumando todos los meses marcados
         deuda_total_seleccionada = 0.0
         saldos_por_mes = {}
 
@@ -625,10 +626,9 @@ def pagar_estudiante(id):
             deuda_total_seleccionada += saldo_mes
 
         if monto_abono_total > (deuda_total_seleccionada + 0.05):
-            flash(f'⚠️ El monto ingresado (Bs. {monto_abono_total:.2f}) excede la deuda total de los meses seleccionados (Bs. {deuda_total_seleccionada:.2f}).', 'warning')
+            flash(f'El monto ingresado (Bs. {monto_abono_total:.2f}) excede la deuda total seleccionada (Bs. {deuda_total_seleccionada:.2f}).', 'warning')
             return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-        # Distribuir el abono total y descuento proporcionalmente entre los meses seleccionados
         monto_restante = monto_abono_total
         descuento_restante = descuento_total
         nuevos_pagos_creados = []
@@ -677,7 +677,15 @@ def pagar_estudiante(id):
                         p.estado = 'Pagado'
 
             db.session.commit()
-            flash(f'✅ Pago múltiple de Bs. {monto_abono_total:.2f} registrado con éxito para {len(meses_seleccionados)} mes(es).', 'success')
+            
+            # ⭐ MENSAJE DE FEEDBACK LIMPIO EN TEXTO PLANO (Sin etiquetas HTML sucias)
+            meses_str = ", ".join(meses_seleccionados)
+            recibo_id_str = f"REC-{anio_actual}-{nuevos_pagos_creados[0].id:04d}" if nuevos_pagos_creados else "S/N"
+            
+            flash(
+                f'¡COBRO MÚLTIPLE EXITOSO! Recibo: #{recibo_id_str} | Meses ({len(meses_seleccionados)}): {meses_str} | Total: Bs. {monto_abono_total:.2f} | Caja: {responsable_turno}',
+                'success'
+            )
             
             if nuevos_pagos_creados:
                 return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=nuevos_pagos_creados[0].id))
@@ -685,7 +693,7 @@ def pagar_estudiante(id):
 
         except Exception as e:
             db.session.rollback()
-            flash(f'❌ Error al procesar el pago múltiple: {str(e)}', 'danger')
+            flash(f'Error al procesar el pago múltiple: {str(e)}', 'danger')
             return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
     # ⭐ CÁLCULO DE SALDOS PARA LA VISTA (PETICIÓN GET)
