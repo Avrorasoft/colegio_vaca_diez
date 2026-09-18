@@ -438,7 +438,7 @@ def generar_avr():
         return redirect(url_for('superadmin.boveda'))
 
 # =========================================================================
-# 2. RESTAURAR PROYECTO (.avr) - VERSIÓN CORREGIDA Y BLINDADA
+# 2. RESTAURAR PROYECTO (.avr) - VERSIÓN CON API DE RESPALDO NATIVA DE SQLITE
 # =========================================================================
 
 @superadmin_bp.route('/restaurar_avr', methods=['POST'])
@@ -475,117 +475,95 @@ def restaurar_avr():
     if is_sqlite:
         db_path = db_uri.replace('sqlite:///', '')
         if not os.path.isabs(db_path):
-            db_path = os.path.join(current_app.root_path, db_path)
+            if db_path.startswith('instance/'):
+                db_path = os.path.join(current_app.instance_path, db_path.replace('instance/', ''))
+            else:
+                db_path = os.path.join(current_app.root_path, db_path)
 
     temp_avr = None
     dir_extraccion = None
 
     try:
-        # ⭐ CIERRE TOTAL Y ABSOLUTO DE CONEXIONES Y POOL DE SQLALCHEMY
+        # Cierre de sesiones de SQLAlchemy
         try:
             db.session.remove()
         except Exception:
             pass
         
         try:
-            # Cerrar todas las conexiones del motor de la app actual
             engine = db.get_engine(current_app)
             if engine:
                 engine.dispose()
         except Exception:
             pass
 
+        db_backup_fuente = None
+
         if is_db_file:
-            if not db_path:
-                flash('❌ No se pudo determinar la ruta de la base de datos SQLite.', 'danger')
-                return redirect(url_for('superadmin.boveda'))
-            
-            # Asegurar que el directorio de destino exista
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            # Guardar temporalmente el .db subido para usarlo como fuente de respaldo
+            temp_db_subido = os.path.join(tempfile.gettempdir(), f"restore_{int(datetime.now().timestamp())}.db")
+            archivo.save(temp_db_subido)
+            db_backup_fuente = temp_db_subido
+        else:
+            # Proceso para archivos .avr (ZIP)
+            temp_avr = os.path.join(
+                tempfile.gettempdir(),
+                f"upload_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
+            )
+            archivo.save(temp_avr)
 
-            # Borrado físico seguro con reintentos para Windows
-            for ext in ['', '-wal', '-shm']:
-                f_antiguo = db_path + ext
-                if os.path.exists(f_antiguo):
-                    for _ in range(3):
-                        try:
-                            os.remove(f_antiguo)
-                            break
-                        except Exception:
-                            import time
-                            time.sleep(0.1)
+            dir_extraccion = os.path.join(
+                tempfile.gettempdir(),
+                f"avr_ext_{int(datetime.now().timestamp())}"
+            )
+            os.makedirs(dir_extraccion, exist_ok=True)
 
-            archivo.save(db_path)
+            with zipfile.ZipFile(temp_avr, 'r') as zipf:
+                for miembro in zipf.namelist():
+                    if not _es_ruta_segura_zip(miembro, dir_extraccion):
+                        raise ValueError(f"Archivo inseguro detectado en .avr: {miembro}")
+                    if len(miembro) > 255:
+                        raise ValueError(f"Nombre de archivo demasiado largo: {miembro}")
+                zipf.extractall(dir_extraccion)
 
-            flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) aplicada con éxito. Por favor recargue la página.', 'success')
-            return redirect(url_for('superadmin.boveda'))
-
-        # Proceso para archivos .avr (ZIP)
-        temp_avr = os.path.join(
-            tempfile.gettempdir(),
-            f"upload_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
-        )
-        archivo.save(temp_avr)
-
-        dir_extraccion = os.path.join(
-            tempfile.gettempdir(),
-            f"avr_ext_{int(datetime.now().timestamp())}"
-        )
-        os.makedirs(dir_extraccion, exist_ok=True)
-
-        # VALIDACIÓN DE SEGURIDAD: verificar cada archivo del ZIP
-        with zipfile.ZipFile(temp_avr, 'r') as zipf:
-            for miembro in zipf.namelist():
-                if not _es_ruta_segura_zip(miembro, dir_extraccion):
-                    raise ValueError(f"Archivo inseguro detectado en .avr: {miembro}")
-                if len(miembro) > 255:
-                    raise ValueError(f"Nombre de archivo demasiado largo: {miembro}")
-            zipf.extractall(dir_extraccion)
-
-        if is_sqlite and db_path:
-            db_backup_encontrado = None
-
-            # Buscar de manera exhaustiva el archivo .db dentro del ZIP extraído
             for root, dirs, files in os.walk(dir_extraccion):
                 for f in files:
                     if f.endswith('.db'):
-                        db_backup_encontrado = os.path.join(root, f)
+                        db_backup_fuente = os.path.join(root, f)
                         break
-                if db_backup_encontrado:
+                if db_backup_fuente:
                     break
 
-            if db_backup_encontrado:
-                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        if is_sqlite and db_path and db_backup_fuente:
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-                # ⭐ PURGA TOTAL Y SEGURA DE ARCHIVOS ANTIGUOS (.db, -wal, -shm)
-                for ext in ['', '-wal', '-shm']:
-                    f_antiguo = db_path + ext
-                    if os.path.exists(f_antiguo):
-                        for _ in range(3):
-                            try:
-                                os.remove(f_antiguo)
-                                break
-                            except Exception:
-                                import time
-                                time.sleep(0.1)
+            # ⭐ APLICAR RESPALDO EN CALIENTE USANDO LA API NATIVA DE SQLITE (Evita borrar archivos y bloqueos de Windows)
+            import sqlite3
+            conn_fuente = sqlite3.connect(db_backup_fuente)
+            conn_destino = sqlite3.connect(db_path)
+            
+            with conn_destino:
+                conn_fuente.backup(conn_destino)
+            
+            conn_fuente.close()
+            conn_destino.close()
 
-                # Copiar el nuevo archivo limpio desde el respaldo extraído
-                shutil.copyfile(db_backup_encontrado, db_path)
+            flash('✅ ¡SISTEMA RESTAURADO! Base de datos aplicada con éxito sin bloqueos.', 'success')
+        else:
+            flash('❌ No se encontró un archivo de base de datos válido para restaurar.', 'danger')
+            return redirect(url_for('superadmin.boveda'))
 
-                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada desde .avr con éxito.', 'success')
-            else:
-                flash('❌ El archivo .avr no contiene ningún archivo de base de datos (.db) válido.', 'danger')
-                return redirect(url_for('superadmin.boveda'))
-
-        # Restaurar archivos adicionales (templates, static, etc.) si vinieron en el .avr
-        for item in os.listdir(dir_extraccion):
-            if not item.endswith('.db') and item != 'base_de_datos.sql':
-                origen = os.path.join(dir_extraccion, item)
-                destino = os.path.join(current_app.root_path, item)
-                if os.path.isdir(origen):
-                    shutil.copytree(origen, destino, dirs_exist_ok=True)
-                elif os.path.isfile(origen):
-                    shutil.copy(origen, destino)
+        # Restaurar archivos multimedia de static si vinieron en el .avr
+        if dir_extraccion:
+            for item in os.listdir(dir_extraccion):
+                if not item.endswith('.db') and item != 'base_de_datos.sql':
+                    if item in ['routes', 'templates', 'venv', '__pycache__'] or item.endswith('.py'):
+                        continue
+                    
+                    origen = os.path.join(dir_extraccion, item)
+                    destino = os.path.join(current_app.root_path, item)
+                    if os.path.isdir(origen) and item == 'static':
+                        shutil.copytree(origen, destino, dirs_exist_ok=True)
 
     except ValueError as ve:
         current_app.logger.error(f"🚨 Intento de path traversal: {ve}")
