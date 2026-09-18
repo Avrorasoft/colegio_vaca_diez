@@ -153,7 +153,6 @@ class Estudiante(db.Model):
     def __repr__(self):
         return f"<Estudiante CI:{self.ci} - {self.apellidos}, {self.nombres}>"
 
-
 # ==============================================================================
 # PADRE / TUTOR (AUTENTICACIÓN PWA CON CONTRASEÑA ASIGNABLE)
 # ==============================================================================

@@ -1455,11 +1455,18 @@ def generar_recibo_adelanto_pdf(pago, persona, tipo_db):
     normal_style = ParagraphStyle(
         'NormalStyle',
         parent=styles['Normal'],
-        fontSize=12,
+        fontSize=8.5,  # Reducido de 12 a 8.5
         textColor=colors.HexColor('#333333'),
         spaceAfter=2,
         spaceBefore=0,
-        leading=15
+        leading=11
+    )
+
+    cell_center = ParagraphStyle(
+        'CellCenter', 
+        parent=normal_style, 
+        fontSize=8.5, 
+        alignment=TA_CENTER
     )
 
     elements = []

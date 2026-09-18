@@ -6,7 +6,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4 no-print">
         <div>
             <h3 class="fw-bold text-primary mb-0"><i class="bi bi-file-earmark-spreadsheet-fill"></i> Planilla General Consolidada</h3>
-            <p class="text-muted mb-0">Colegio Dr. Antonio Vaca Díez - Gestión {{ anio_actual }}</p>
+            <p class="text-muted mb-0">{{ nombre_institucion | default('Institución Educativa General') }} - Gestión {{ anio_actual }}</p>
         </div>
         <div>
             <button onclick="window.print()" class="btn btn-dark btn-sm me-2">
@@ -20,8 +20,8 @@
 
     <!-- ENCABEZADO INSTITUCIONAL PARA IMPRESIÓN -->
     <div class="print-header text-center mb-3">
-        <h5 class="fw-bold mb-1">COLEGIO DR. ANTONIO VACA DÍEZ</h5>
-        <p class="text-muted mb-0 small">Dirección Administrativa y Financiera - Riberalta, Beni, Bolivia</p>
+        <h5 class="fw-bold mb-1">{{ nombre_institucion | default('INSTITUCIÓN EDUCATIVA GENERAL') }}</h5>
+        <p class="text-muted mb-0 small">Dirección Administrativa y Financiera - {{ ciudad_institucion | default('Riberalta, Beni, Bolivia') }}</p>
         <h6 class="fw-bold text-dark mt-1">PLANILLA GENERAL CONSOLIDADA DE SUELDOS - GESTIÓN {{ anio_actual }}</h6>
     </div>
 
@@ -122,7 +122,7 @@
 
     <!-- Pie de página institucional para impresión -->
     <div class="print-footer text-center">
-        COLEGIO DR. ANTONIO VACA DÍEZ &bull; Módulo de Gestión de Personal y Finanzas &bull; Documento Oficial Consolidado
+        {{ nombre_institucion | default('INSTITUCIÓN EDUCATIVA GENERAL') }} &bull; Módulo de Gestión de Personal y Finanzas &bull; Documento Oficial Consolidado
     </div>
 </div>
 
@@ -162,21 +162,18 @@
         }
         .print-footer {
             display: block !important;
-            position: fixed;
-            bottom: 0;
-            left: 0;
             width: 100%;
             font-size: 9px;
             color: #555;
             border-top: 1px solid #ccc;
             padding-top: 4px;
+            margin-top: 20px;
         }
         .card {
             border: 1px solid #000 !important;
             box-shadow: none !important;
-            margin-bottom: 15px !important;
+            margin-bottom: 10px !important;
             background-color: #fff !important;
-            break-inside: avoid;
         }
         .card-header {
             background-color: #e9ecef !important;
@@ -185,11 +182,11 @@
             font-weight: bold;
         }
         .table {
-            font-size: 10.5px !important;
+            font-size: 10px !important;
             margin-bottom: 0 !important;
         }
         .table th, .table td {
-            padding: 4px 6px !important;
+            padding: 3px 5px !important;
         }
     }
 </style>
