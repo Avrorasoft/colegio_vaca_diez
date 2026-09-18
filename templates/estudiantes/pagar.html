@@ -8,7 +8,7 @@
             <h4 class="mb-0">
                 <i class="bi bi-cash-coin me-2"></i> Módulo de Cobros y Amortizaciones
             </h4>
-            <span class="badge bg-light text-dark fs-6">Gestión {{ anio }}</span>
+            <span class="badge bg-light text-dark fs-6">Gestión {{ anio_actual }}</span>
         </div>
 
         <div class="card-body">
@@ -20,11 +20,11 @@
                 </div>
                 <div class="col-md-2">
                     <strong>C.I.:</strong><br>
-                    {{ est.ci }}
+                    {{ est.ci or 'S/N' }}
                 </div>
                 <div class="col-md-2">
                     <strong>Curso:</strong><br>
-                    {{ est.curso }}
+                    {{ est.curso or 'No asignado' }}
                 </div>
                 <div class="col-md-2">
                     <strong>Pensión Oficial:</strong><br>
@@ -40,7 +40,7 @@
             <ul class="nav nav-pills nav-fill mb-4" id="pills-tab" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active fs-5 fw-bold" id="tab-pensiones-tab" data-bs-toggle="pill" data-bs-target="#tab-pensiones" type="button" role="tab">
-                        <i class="bi bi-calendar-check me-2"></i> 1. Mensualidades / Amortizaciones
+                        <i class="bi bi-calendar-check me-2"></i> 1. Mensualidades / Amortizaciones (Múltiples)
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -51,86 +51,76 @@
             </ul>
 
             <div class="tab-content" id="pills-tabContent">
-                <!-- PANEL 1: PENSIONES Y AMORTIZACIONES -->
+                <!-- PANEL 1: PENSIONES Y AMORTIZACIONES CON CHECKBOXES -->
                 <div class="tab-pane fade show active" id="tab-pensiones" role="tabpanel">
-                    <h5 class="fw-bold mb-3"><i class="bi bi-table me-2"></i>Estado de Cuenta del Año Lectivo (12 Meses)</h5>
-                    <div class="table-responsive mb-4">
-                        <table class="table table-bordered table-hover align-middle">
-                            <thead class="table-dark text-center">
-                                <tr>
-                                    <th>Mes</th>
-                                    <th>Costo Mensual</th>
-                                    <th>Total Pagado</th>
-                                    <th>Saldo Pendiente</th>
-                                    <th>Estado</th>
-                                    <th>Acción Rápida</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% if estado_meses %}
-                                    {% for em in estado_meses %}
-                                    <tr class="text-center" id="fila_{{ em.mes }}">
-                                        <td class="fw-bold">{{ em.mes }}</td>
-                                        <td>Bs. {{ "%.2f"|format(em.costo) }}</td>
-                                        <td class="text-success fw-bold">Bs. {{ "%.2f"|format(em.abonado) }}</td>
-                                        <td class="text-danger fw-bold">Bs. {{ "%.2f"|format(em.saldo) }}</td>
-                                        <td>
-                                            {% if em.estado == 'Cancelado' %}
-                                                <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Cancelado</span>
-                                            {% elif em.estado == 'Abono Parcial' %}
-                                                <span class="badge bg-warning text-dark fs-6"><i class="bi bi-clock-history me-1"></i>Abono Parcial</span>
-                                            {% else %}
-                                                <span class="badge bg-danger fs-6"><i class="bi bi-x-circle me-1"></i>Pendiente</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if em.saldo > 0 %}
-                                                <button type="button" 
-                                                        class="btn btn-primary btn-sm" 
-                                                        onclick="seleccionarMes('{{ em.mes }}', {{ em.saldo }})">
-                                                    <i class="bi bi-arrow-down-circle me-1"></i> Seleccionar
-                                                </button>
-                                            {% else %}
-                                                <span class="text-muted"><i class="bi bi-check2-all text-success"></i> Al Día</span>
-                                            {% endif %}
-                                        </td>
+                    <h5 class="fw-bold mb-3"><i class="bi bi-table me-2"></i>Estado de Cuenta del Año Lectivo (Marque los meses a cancelar)</h5>
+                    
+                    <form method="POST" id="form-pago-multiple">
+                        <input type="hidden" name="accion_cobro" value="pension">
+                        
+                        <div class="table-responsive mb-4">
+                            <table class="table table-bordered table-hover align-middle">
+                                <thead class="table-dark text-center">
+                                    <tr>
+                                        <th style="width: 5%;">
+                                            <input type="checkbox" id="seleccionar_todos" class="form-check-input" title="Seleccionar todos los meses pendientes">
+                                        </th>
+                                        <th>Mes</th>
+                                        <th>Costo Mensual</th>
+                                        <th>Total Pagado</th>
+                                        <th>Saldo Pendiente</th>
+                                        <th>Estado</th>
                                     </tr>
-                                    {% endfor %}
-                                {% endif %}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- CAJA DE COBRO MENSUALIDAD -->
-                    <div class="card border-primary shadow-sm" id="caja_cobro">
-                        <div class="card-header bg-primary text-white">
-                            <h5 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Registrar Abono o Cancelación de Mensualidad</h5>
+                                </thead>
+                                <tbody>
+                                    {% if estado_meses %}
+                                        {% for em in estado_meses %}
+                                        <tr class="text-center" id="fila_{{ em.mes }}">
+                                            <td>
+                                                {# Forzamos habilitación si hay saldo pendiente o si la pensión está activa #}
+                                                {% if em.saldo > 0 or em.estado != 'Cancelado' %}
+                                                <input type="checkbox" name="meses_seleccionados" value="{{ em.mes }}" data-saldo="{{ em.saldo }}" class="form-check-input check-mes" onchange="calcularTotalSeleccionado()">
+                                                {% endif %}
+                                            </td>
+                                            <td class="fw-bold">{{ em.mes }}</td>
+                                            <td>Bs. {{ "%.2f"|format(em.costo) }}</td>
+                                            <td class="text-success fw-bold">Bs. {{ "%.2f"|format(em.abonado) }}</td>
+                                            <td class="text-danger fw-bold">Bs. {{ "%.2f"|format(em.saldo) }}</td>
+                                            <td>
+                                                {% if em.estado == 'Cancelado' %}
+                                                    <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Cancelado</span>
+                                                {% elif em.estado == 'Abono Parcial' %}
+                                                    <span class="badge bg-warning text-dark fs-6"><i class="bi bi-clock-history me-1"></i>Abono Parcial</span>
+                                                {% else %}
+                                                    <span class="badge bg-danger fs-6"><i class="bi bi-x-circle me-1"></i>Pendiente</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% endif %}
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="card-body">
-                            <form method="POST">
-                                <input type="hidden" name="accion_cobro" value="pension">
+
+                        <!-- CAJA DE COBRO MÚLTIPLE CONSOLIDADO -->
+                        <div class="card border-primary shadow-sm" id="caja_cobro">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Consolidado de Pago de Pensiones Seleccionadas</h5>
+                            </div>
+                            <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label class="form-label fw-bold">Mes a Imputar *</label>
-                                        <select name="mes_a_pagar" id="select_mes_pagar" class="form-select form-select-lg border-primary fw-bold" required onchange="alCambiarMes()">
-                                            <option value="" disabled selected>-- Elija un mes --</option>
-                                            {% if estado_meses %}
-                                                {% for em in estado_meses %}
-                                                    <option value="{{ em.mes }}" 
-                                                            data-saldo="{{ '%.2f'|format(em.saldo) }}"
-                                                            {% if em.saldo <= 0 %}disabled{% endif %}>
-                                                        {{ em.mes }} {% if em.saldo > 0 %}(Deuda: Bs. {{ '%.2f'|format(em.saldo) }}){% else %}(Cancelado){% endif %}
-                                                    </option>
-                                                {% endfor %}
-                                            {% endif %}
-                                        </select>
+                                        <label class="form-label fw-bold">Meses Seleccionados</label>
+                                        <div class="input-group input-group-lg">
+                                            <input type="text" id="lbl_meses_seleccionados" class="form-control fw-bold bg-light" readonly value="Ninguno">
+                                        </div>
                                     </div>
 
                                     <div class="col-md-4 mb-3">
-                                        <label class="form-label fw-bold">Saldo Pendiente de este Mes</label>
+                                        <label class="form-label fw-bold">Deuda Total Seleccionada</label>
                                         <div class="input-group input-group-lg">
                                             <span class="input-group-text bg-light text-danger fw-bold">Bs.</span>
-                                            <input type="text" id="lbl_saldo_pendiente" class="form-control fw-bold text-danger" readonly value="0.00">
+                                            <input type="text" id="lbl_saldo_pendiente" class="form-control fw-bold text-danger bg-light" readonly value="0.00">
                                         </div>
                                     </div>
 
@@ -158,14 +148,14 @@
                                     </div>
 
                                     <div class="col-md-4 mb-3 d-flex align-items-end justify-content-end">
-                                        <button type="submit" class="btn btn-success btn-lg" id="btn_confirmar" disabled>
-                                            <i class="bi bi-check2-circle me-1"></i> Confirmar Abono / Pensión
+                                        <button type="submit" class="btn btn-success btn-lg w-100 fw-bold" id="btn_confirmar" disabled>
+                                            <i class="bi bi-check2-circle me-1"></i> Confirmar Pago Múltiple
                                         </button>
                                     </div>
                                 </div>
-                            </form>
+                            </div>
                         </div>
-                    </div>
+                    </form>
                 </div>
 
                 <!-- PANEL 2: OTROS CONCEPTOS -->
@@ -236,46 +226,44 @@
 </div>
 
 <script>
-function alCambiarMes() {
-    var select = document.getElementById('select_mes_pagar');
-    var selectedOption = select.options[select.selectedIndex];
-    var saldo = parseFloat(selectedOption.getAttribute('data-saldo')) || 0;
+document.addEventListener('DOMContentLoaded', function() {
+    const seleccionarTodos = document.getElementById('seleccionar_todos');
+    const checkboxes = document.querySelectorAll('.check-mes');
 
-    var lblSaldo = document.getElementById('lbl_saldo_pendiente');
-    var inputAbono = document.getElementById('input_abono');
-    var btnConfirmar = document.getElementById('btn_confirmar');
+    if (seleccionarTodos) {
+        seleccionarTodos.addEventListener('change', function() {
+            checkboxes.forEach(cb => {
+                cb.checked = seleccionarTodos.checked;
+            });
+            calcularTotalSeleccionado();
+        });
+    }
+});
 
-    lblSaldo.value = saldo.toFixed(2);
-    inputAbono.value = saldo.toFixed(2);
-    inputAbono.max = saldo;
+function calcularTotalSeleccionado() {
+    const checkboxes = document.querySelectorAll('.check-mes:checked');
+    let sumaSaldo = 0;
+    let mesesNombres = [];
 
-    if (select.value && saldo > 0) {
+    checkboxes.forEach(cb => {
+        sumaSaldo += parseFloat(cb.getAttribute('data-saldo')) || 0;
+        mesesNombres.push(cb.value);
+    });
+
+    const lblSaldo = document.getElementById('lbl_saldo_pendiente');
+    const lblMeses = document.getElementById('lbl_meses_seleccionados');
+    const inputAbono = document.getElementById('input_abono');
+    const btnConfirmar = document.getElementById('btn_confirmar');
+
+    lblSaldo.value = sumaSaldo.toFixed(2);
+    inputAbono.value = sumaSaldo.toFixed(2);
+    lblMeses.value = mesesNombres.length > 0 ? mesesNombres.join(', ') : 'Ninguno';
+
+    if (checkboxes.length > 0 && sumaSaldo > 0) {
         btnConfirmar.disabled = false;
     } else {
         btnConfirmar.disabled = true;
     }
 }
-
-function seleccionarMes(mes, saldo) {
-    var select = document.getElementById('select_mes_pagar');
-    select.value = mes;
-    alCambiarMes();
-    document.getElementById('caja_cobro').scrollIntoView({ behavior: 'smooth' });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    var select = document.getElementById('select_mes_pagar');
-    if (select) {
-        for (var i = 0; i < select.options.length; i++) {
-            var opt = select.options[i];
-            var saldo = parseFloat(opt.getAttribute('data-saldo')) || 0;
-            if (!opt.disabled && opt.value !== "" && saldo > 0) {
-                select.selectedIndex = i;
-                alCambiarMes();
-                break;
-            }
-        }
-    }
-});
 </script>
 {% endblock %}

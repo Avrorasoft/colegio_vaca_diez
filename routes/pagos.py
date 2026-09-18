@@ -4,7 +4,7 @@
 # Proyecto: Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez
 # Desarrollado por: Avrora Soft - Vibola LLC
 # Descripción: Blueprint para gestión de Pagos, Caja y Recibos con validación
-#              estricta de turno activo (Cero asignaciones automáticas).
+#             estricta de turno activo (Cero asignaciones automáticas).
 # ==============================================================================
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, session
@@ -45,7 +45,7 @@ def index():
 
 
 # =========================================================================
-# REGISTRAR PAGO
+# REGISTRAR PAGO (SOPORTA PAGO INDIVIDUAL Y MÚLTIPLE POR CHECKBOXES)
 # =========================================================================
 @pagos_bp.route('/registrar', methods=['GET', 'POST'])
 def registrar():
@@ -59,15 +59,14 @@ def registrar():
 
     if request.method == 'POST':
         try:
+            accion_cobro = request.form.get('accion_cobro', 'pension')
             estudiante_id = request.form['estudiante_id']
-            mes = request.form['mes']
             anio = int(request.form['anio'])
-            monto_total = float(request.form['monto_total'])
+            metodo_pago = request.form.get('metodo_pago', 'Efectivo')
             descuento = float(request.form.get('descuento', 0))
-            monto_pagado = float(request.form['monto_pagado'])
-            
+            monto_abonado = float(request.form.get('monto_abono', 0))
+
             estudiante_obj = Estudiante.query.get(estudiante_id)
-            
             if not estudiante_obj:
                 flash('⚠️ El estudiante seleccionado no existe en la base de datos.', 'danger')
                 return redirect(url_for('pagos.registrar'))
@@ -75,32 +74,85 @@ def registrar():
             ci_est = estudiante_obj.ci if hasattr(estudiante_obj, 'ci') and estudiante_obj.ci else 'S/N'
             rude_est = estudiante_obj.rude if hasattr(estudiante_obj, 'rude') and estudiante_obj.rude else 'S/N'
 
-            pago_existente = Pago.query.filter_by(
-                estudiante_id=estudiante_id, mes=mes, anio=anio
-            ).first()
-            
-            if pago_existente:
-                flash('⚠️ Ya existe un registro para este mes y año.', 'warning')
-                return redirect(url_for('pagos.registrar'))
-            
-            nuevo_pago = Pago(
-                estudiante_id=estudiante_id,
-                ci_estudiante=ci_est,
-                rude_estudiante=rude_est,
-                mes=mes,
-                anio=anio,
-                monto_total=monto_total,
-                descuento=descuento,
-                monto_pagado=monto_pagado,
-                fecha_pago=datetime.now(),
-                estado='Pagado' if monto_pagado >= (monto_total - descuento) else 'Parcial',
-                turno_responsable=responsable_turno
-            )
-            db.session.add(nuevo_pago)
-            db.session.commit()
-            
-            flash(f'✅ Pago registrado exitosamente (Turno: {responsable_turno}).', 'success')
-            return redirect(url_for('pagos.index'))
+            # CASO 1: PAGO MÚLTIPLE POR CASILLAS DE VERIFICACIÓN (CHECKBOXES)
+            if accion_cobro == 'pension_multiple':
+                meses_seleccionados = request.form.getlist('meses_seleccionados')
+                if not meses_seleccionados:
+                    flash('❌ No seleccionó ningún mes de pensión.', 'danger')
+                    return redirect(request.referrer or url_for('pagos.registrar'))
+
+                pension_base_est = float(estudiante_obj.pension or 0.0)
+                
+                for mes_nombre in meses_seleccionados:
+                    pago_existente = Pago.query.filter_by(
+                        estudiante_id=estudiante_id, mes=mes_nombre, anio=anio
+                    ).first()
+
+                    monto_mes = pension_base_est
+                    desc_mes = descuento / len(meses_seleccionados) if descuento > 0 else 0.0
+                    pagado_mes = min(monto_abonado, monto_mes - desc_mes)
+                    monto_abonado -= pagado_mes # Descontar del abono global ingresado
+
+                    if pago_existente:
+                        # Si ya existía, actualizar o sumar
+                        pago_existente.monto_pagado = float(pago_existente.monto_pagado or 0) + pagado_mes
+                        pago_existente.descuento = float(pago_existente.descuento or 0) + desc_mes
+                        if pago_existente.monto_pagado >= (pago_existente.monto_total - pago_existente.descuento):
+                            pago_existente.estado = 'Pagado'
+                        else:
+                            pago_existente.estado = 'Parcial'
+                    else:
+                        nuevo_pago = Pago(
+                            estudiante_id=estudiante_id,
+                            ci_estudiante=ci_est,
+                            rude_estudiante=rude_est,
+                            mes=mes_nombre,
+                            anio=anio,
+                            monto_total=monto_mes,
+                            descuento=desc_mes,
+                            monto_pagado=pagado_mes,
+                            fecha_pago=datetime.now(),
+                            estado='Pagado' if pagado_mes >= (monto_mes - desc_mes) else 'Parcial',
+                            turno_responsable=responsable_turno
+                        )
+                        db.session.add(nuevo_pago)
+
+                db.session.commit()
+                flash(f'✅ ¡PAGO MÚLTIPLE EXITOSO! Se procesaron {len(meses_seleccionados)} mes(es) en caja (Turno: {responsable_turno}).', 'success')
+                return redirect(url_for('pagos.index'))
+
+            # CASO 2: PAGO INDIVIDUAL TRADICIONAL
+            else:
+                mes = request.form['mes']
+                monto_total = float(request.form['monto_total'])
+                monto_pagado = float(request.form['monto_pagado'])
+
+                pago_existente = Pago.query.filter_by(
+                    estudiante_id=estudiante_id, mes=mes, anio=anio
+                ).first()
+                
+                if pago_existente:
+                    flash('⚠️ Ya existe un registro para este mes y año.', 'warning')
+                    return redirect(url_for('pagos.registrar'))
+                
+                nuevo_pago = Pago(
+                    estudiante_id=estudiante_id,
+                    ci_estudiante=ci_est,
+                    rude_estudiante=rude_est,
+                    mes=mes,
+                    anio=anio,
+                    monto_total=monto_total,
+                    descuento=descuento,
+                    monto_pagado=monto_pagado,
+                    fecha_pago=datetime.now(),
+                    estado='Pagado' if monto_pagado >= (monto_total - descuento) else 'Parcial',
+                    turno_responsable=responsable_turno
+                )
+                db.session.add(nuevo_pago)
+                db.session.commit()
+                
+                flash(f'✅ Pago registrado exitosamente (Turno: {responsable_turno}).', 'success')
+                return redirect(url_for('pagos.index'))
             
         except Exception as e:
             db.session.rollback()
@@ -174,7 +226,7 @@ def historial():
 def deudores_por_curso():
     """Muestra la lista de estudiantes deudores filtrados por curso."""
     curso_seleccionado = request.args.get('curso', '')
-    gestion = request.args.get('gestion', datetime.now(BOLIVIA_TZ).year, type=int)
+    gestion = request.args.get('gestion', datetime.now().year, type=int)
 
     # Obtener lista única de cursos activos para el selector
     cursos = db.session.query(Estudiante.curso).filter_by(estado='Activo').distinct().order_by(Estudiante.curso).all()
@@ -183,23 +235,18 @@ def deudores_por_curso():
     deudores = []
 
     if curso_seleccionado:
-        # Meses escolares fijos esperados en la gestión (puedes ajustar según tu calendario)
         meses_esperados = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-        
-        # Supongamos una mensualidad fija por defecto (puedes adaptarla si el modelo tiene un costo asignado)
-        costo_mensual = 350.0  # Cambia esto al monto fijo real de la pensión mensual en Bolivianos
+        costo_mensual = 350.0 
         total_esperado_anual = len(meses_esperados) * costo_mensual
 
         estudiantes = Estudiante.query.filter_by(curso=curso_seleccionado, estado='Activo').order_by(Estudiante.apellidos).all()
         
         for est in estudiantes:
-            pagos_estudiante = Pago.query.filter_by(estudiante_id=est.id, gestion=gestion).all()
+            pagos_estudiante = Pago.query.filter_by(estudiante_id=est.id, anio=gestion).all()
             
-            # Obtener los meses que ya han sido pagados y registrados
             meses_pagados = [p.mes for p in pagos_estudiante if getattr(p, 'estado', 'Pagado') == 'Pagado']
-            total_pagado = sum([p.monto for p in pagos_estudiante if getattr(p, 'estado', 'Pagado') == 'Pagado'])
+            total_pagado = sum([p.monto_pagado for p in pagos_estudiante if getattr(p, 'estado', 'Pagado') == 'Pagado'])
             
-            # Si el total pagado es menor al esperado anual, se calcula el saldo
             if total_pagado < total_esperado_anual:
                 saldo_pendiente = total_esperado_anual - total_pagado
                 deudores.append({
@@ -216,10 +263,10 @@ def deudores_por_curso():
                            deudores=deudores)
 
 # =========================================================================
-# GENERAR RECIBO PDF SIMPLE (Función auxiliar)
+# GENERAR RECIBO PDF SIMPLE (SOPORTA PAGOS MÚLTIPLES Y TURNO)
 # =========================================================================
-def generar_recibo_pago_pdf_simple(pago, estudiante, padre):
-    """Genera un recibo simple de pago en PDF."""
+def generar_recibo_pago_pdf_simple(pagos_o_pago, estudiante, padre):
+    """Genera un recibo en PDF soportando tanto pagos únicos como múltiples y turno."""
     try:
         from reportlab.lib.pagesizes import letter
         from reportlab.lib import colors
@@ -230,6 +277,12 @@ def generar_recibo_pago_pdf_simple(pago, estudiante, padre):
     except ImportError:
         raise Exception("ReportLab no está instalado. Ejecute: pip install reportlab")
     
+    # Asegurar que 'pagos' sea siempre una lista iterable
+    if isinstance(pagos_o_pago, list):
+        pagos = pagos_o_pago
+    else:
+        pagos = [pagos_o_pago]
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, 
                             rightMargin=1*inch, leftMargin=1*inch,
@@ -246,44 +299,56 @@ def generar_recibo_pago_pdf_simple(pago, estudiante, padre):
     
     elements = []
     
-    # Encabezado
+    # Encabezado institucional
     elements.append(Paragraph("COLEGIO DR. ANTONIO VACA DÍEZ", title_style))
     elements.append(Paragraph("Dirección Administrativa y Académica", header_style))
     elements.append(Paragraph("Riberalta, Beni, Bolivia", header_style))
-    elements.append(Spacer(1, 0.3*inch))
-    elements.append(Paragraph("RECIBO DE PAGO", title_style))
     elements.append(Spacer(1, 0.2*inch))
+    elements.append(Paragraph("RECIBO OFICIAL DE PAGO", title_style))
+    elements.append(Spacer(1, 0.15*inch))
     
-    # Número de recibo y fecha
-    numero_recibo = f"REC-{pago.anio}-{pago.id:04d}"
-    fecha_str = pago.fecha_pago.strftime('%d/%m/%Y %H:%M') if pago.fecha_pago else datetime.now().strftime('%d/%m/%Y %H:%M')
+    # Datos de referencia (N° de Recibo, Fecha y Turno)
+    primer_pago = pagos[0] if pagos else None
+    recibo_id = primer_pago.id if primer_pago else 1000
+    anio_ref = primer_pago.anio if primer_pago else datetime.now().year
+    numero_recibo = f"REC-{anio_ref}-{recibo_id:04d}"
     
+    fecha_pago_val = getattr(primer_pago, 'fecha_pago', None) if primer_pago else None
+    fecha_str = fecha_pago_val.strftime('%d/%m/%Y %H:%M') if fecha_pago_val else datetime.now().strftime('%d/%m/%Y %H:%M')
+    
+    turno_cobro = getattr(primer_pago, 'turno_responsable', None) if primer_pago else 'Caja Central'
+    if not turno_cobro:
+        turno_cobro = 'Caja Central'
+
     info_data = [
         [Paragraph(f"<b>N° de Recibo:</b> {numero_recibo}", normal_style), 
          Paragraph(f"<b>Fecha:</b> {fecha_str}", normal_style)],
+        [Paragraph(f"<b>Caja / Turno:</b> {turno_cobro}", normal_style),
+         Paragraph("", normal_style)]
     ]
     info_table = Table(info_data, colWidths=[3.5*inch, 3.5*inch])
     info_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0f0f0')),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 10),
         ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.15*inch))
     
     # Datos del estudiante
     elements.append(Paragraph("<b>DATOS DEL ESTUDIANTE</b>", normal_style))
-    elements.append(Spacer(1, 0.1*inch))
+    elements.append(Spacer(1, 0.05*inch))
     
     estudiante_data = [
         [Paragraph(f"<b>Nombre:</b> {estudiante.apellidos}, {estudiante.nombres}", normal_style),
-         Paragraph(f"<b>RUDE:</b> {estudiante.rude if estudiante.rude else 'S/N'}", normal_style)],
+         Paragraph(f"<b>C.I.:</b> {estudiante.ci if hasattr(estudiante, 'ci') and estudiante.ci else 'S/N'}", normal_style)],
         [Paragraph(f"<b>Curso:</b> {estudiante.curso if hasattr(estudiante, 'curso') else 'No asignado'}", normal_style),
-         Paragraph(f"<b>Gestión:</b> {pago.anio}", normal_style)],
+         Paragraph(f"<b>Gestión:</b> {anio_ref}", normal_style)],
     ]
     
     if padre:
@@ -299,50 +364,83 @@ def generar_recibo_pago_pdf_simple(pago, estudiante, padre):
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 10),
         ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
     ]))
     elements.append(estudiante_table)
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.15*inch))
     
-    # Detalle del pago
-    elements.append(Paragraph("<b>DETALLE DEL PAGO</b>", normal_style))
-    elements.append(Spacer(1, 0.1*inch))
+    # Detalle de la tabla de pagos (Soporta múltiples meses)
+    elements.append(Paragraph("<b>DETALLE DE CONCEPTOS CANCELADOS</b>", normal_style))
+    elements.append(Spacer(1, 0.05*inch))
     
     pago_data = [
-        [Paragraph("<b>Concepto</b>", normal_style), Paragraph("<b>Valor</b>", normal_style)],
-        [Paragraph(f"Mes: {pago.mes}", normal_style), Paragraph(f"Bs. {pago.monto_total:.2f}", normal_style)],
-        [Paragraph("Descuento", normal_style), Paragraph(f"- Bs. {(pago.descuento or 0):.2f}", normal_style)],
-        [Paragraph("<b>Monto Pagado</b>", normal_style), Paragraph(f"<b>Bs. {pago.monto_pagado:.2f}</b>", normal_style)],
-        [Paragraph("Estado", normal_style), Paragraph(pago.estado, normal_style)],
+        [Paragraph("<b>Concepto / Mes</b>", normal_style), 
+         Paragraph("<b>Monto Base</b>", normal_style), 
+         Paragraph("<b>Descuento</b>", normal_style), 
+         Paragraph("<b>Pagado</b>", normal_style)]
     ]
     
-    pago_table = Table(pago_data, colWidths=[4*inch, 3*inch])
+    total_general_pagado = 0.0
+
+    for p in pagos:
+        concepto = f"Pensión - {p.mes}" if getattr(p, 'tipo_concepto', 'Pensión') == 'Pensión' else f"{p.tipo_concepto}: {p.detalle_concepto}"
+        monto_t = float(p.monto_total or 0.0)
+        desc_t = float(p.descuento or 0.0)
+        pagado_t = float(p.monto_pagado or 0.0)
+        total_general_pagado += pagado_t
+
+        pago_data.append([
+            Paragraph(concepto, normal_style),
+            Paragraph(f"Bs. {monto_t:.2f}", normal_style),
+            Paragraph(f"Bs. {desc_t:.2f}", normal_style),
+            Paragraph(f"<b>Bs. {pagado_t:.2f}</b>", normal_style)
+        ])
+    
+    pago_table = Table(pago_data, colWidths=[2.8*inch, 1.4*inch, 1.4*inch, 1.4*inch])
     pago_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a4a4a')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(pago_table)
+    elements.append(Spacer(1, 0.15*inch))
+
+    # Total General
+    totales_data = [
+        [Paragraph("<b>TOTAL GENERAL CANCELADO:</b>", normal_style),
+         Paragraph(f"<b>Bs. {total_general_pagado:.2f}</b>", normal_style)]
+    ]
+    totales_table = Table(totales_data, colWidths=[4.2*inch, 2.8*inch])
+    totales_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#d4edda')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 8),
         ('RIGHTPADDING', (0, 0), (-1, -1), 8),
         ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
     ]))
-    elements.append(pago_table)
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Firma
-    elements.append(Paragraph("_" * 50, normal_style))
-    elements.append(Paragraph("Firma del Administrador", normal_style))
+    elements.append(totales_table)
     elements.append(Spacer(1, 0.2*inch))
     
-    # Pie de página
+    # Firma y pie de página
+    elements.append(Paragraph("_" * 40, normal_style))
+    elements.append(Paragraph("Firma y Sello de Administración / Caja", normal_style))
+    elements.append(Spacer(1, 0.15*inch))
+    
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, 
                                   textColor=colors.grey, alignment=TA_CENTER)
-    elements.append(Spacer(1, 0.2*inch))
     footer_text = Paragraph(
-        f"<i>Este recibo es un comprobante oficial de pago. Conserve este documento para sus registros. "
+        f"<i>Este recibo es un comprobante oficial de pago consolidado. "
         f"Generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M')} por el Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez.</i>",
         footer_style
     )
