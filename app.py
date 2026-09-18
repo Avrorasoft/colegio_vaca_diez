@@ -20,6 +20,28 @@ from flask import (
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.utils import secure_filename
+# -*- coding: utf-8 -*-
+"""
+==============================================================================
+Archivo: app.py
+Proyecto: ASestud - Sistema de Gestión Escolar
+Desarrollado por: Avrora Soft - Vibola LLC
+==============================================================================
+"""
+
+import os
+import secrets
+import string
+import gc
+from datetime import datetime, timezone, timedelta, date
+from functools import wraps
+
+from flask import (
+    Flask, redirect, url_for, jsonify, request, session,
+    render_template, render_template_string, flash
+)
+from flask_wtf.csrf import CSRFProtect, CSRFError
+from werkzeug.utils import secure_filename
 
 from models import db, Estudiante, ConfiguracionSuperadmin
 from config import Config
@@ -53,6 +75,7 @@ if os.path.exists(bandera_inicio):
                 print(f"🗑️ [LIMPIEZA] Borrado exitoso: {archivo_encontrado}")
             except Exception as ex:
                 print(f"⚠️ No se pudo borrar {archivo_encontrado}: {ex}")
+
 app = Flask(__name__)
 # Optimizacion de cache para activos estaticos
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
@@ -60,6 +83,37 @@ app.config.from_object(Config)
 
 db.init_app(app)
 csrf = CSRFProtect(app)
+
+# ==============================================================================
+# SCRIPT DE MANTENIMIENTO: AUDITORÍA Y CORRECCIÓN DE PENSIONES NULAS
+# ==============================================================================
+def auditar_y_corregir_pensiones_nulas(app_instance, pension_por_defecto=350.0):
+    """Verifica y corrige alumnos activos con pensiones nulas o en cero de forma automática."""
+    with app_instance.app_context():
+        try:
+            estudiantes_afectados = Estudiante.query.filter(
+                (Estudiante.estado == 'Activo') & 
+                ((Estudiante.pension == None) | (Estudiante.pension <= 0))
+            ).all()
+
+            if estudiantes_afectados:
+                for est in estudiantes_afectados:
+                    est.pension = pension_por_defecto
+                db.session.commit()
+                print(f"🔧 [MANTENIMIENTO] Se corrigieron {len(estudiantes_afectados)} estudiante(s) activo(s) con pensión nula, asignando Bs. {pension_por_defecto:.2f}.")
+            else:
+                print("✅ [MANTENIMIENTO] Auditoría de pensiones exitosa: Todos los estudiantes activos tienen una pensión válida.")
+        except Exception as e:
+            print(f"❌ Error durante la auditoría de pensiones: {str(e)}")
+
+# Ejecución de auditoría inicial al arrancar el contexto de la app
+with app.app_context():
+    try:
+        db.create_all()
+        auditar_y_corregir_pensiones_nulas(app, pension_por_defecto=350.0)
+    except Exception as e:
+        print(f"⚠️ Aviso en inicialización de BD: {e}")
+
 # ==============================================================================
 # BLINDAJE GLOBAL CONTRA ERRORES CSRF EN EL SETUP INICIAL
 # ==============================================================================
@@ -67,7 +121,8 @@ csrf = CSRFProtect(app)
 def bypass_csrf_for_setup():
     """Omite la validación CSRF global si el sistema no está configurado
     o si la petición va dirigida estrictamente al asistente de instalación."""
-    if request.path == '/setup' or not _esta_configurado():
+    # Nota: Asegúrate de definir _esta_configurado() o ajustarlo según tu lógica existente
+    if request.path == '/setup':
         setattr(request, '_csrf_token_invalid', False)
         request.csrf_valid = True
 
