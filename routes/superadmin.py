@@ -1340,6 +1340,9 @@ def informes_login():
 
         return render_template_string(INFORMES_LOGIN_TEMPLATE)
 
+    # Corrección: Retorno obligatorio para solicitudes GET (peticiones iniciales)
+    return render_template_string(INFORMES_LOGIN_TEMPLATE)
+
 
 @superadmin_bp.route('/informes/logout')
 def informes_logout():
