@@ -1,0 +1,622 @@
+('D:\\colegio_vaca_diez\\build\\ASestud\\PYZ-00.pyz',
+ [('__future__',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\__future__.py',
+   'PYMODULE'),
+  ('_aix_support',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_aix_support.py',
+   'PYMODULE'),
+  ('_ast_unparse',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_ast_unparse.py',
+   'PYMODULE'),
+  ('_colorize',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_colorize.py',
+   'PYMODULE'),
+  ('_compat_pickle',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_compat_pickle.py',
+   'PYMODULE'),
+  ('_opcode_metadata',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_opcode_metadata.py',
+   'PYMODULE'),
+  ('_py_abc',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_py_abc.py',
+   'PYMODULE'),
+  ('_py_warnings',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_py_warnings.py',
+   'PYMODULE'),
+  ('_pydatetime',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_pydatetime.py',
+   'PYMODULE'),
+  ('_pydecimal',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_pydecimal.py',
+   'PYMODULE'),
+  ('_strptime',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_strptime.py',
+   'PYMODULE'),
+  ('_threading_local',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_threading_local.py',
+   'PYMODULE'),
+  ('annotationlib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\annotationlib.py',
+   'PYMODULE'),
+  ('argparse',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\argparse.py',
+   'PYMODULE'),
+  ('ast',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ast.py',
+   'PYMODULE'),
+  ('base64',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\base64.py',
+   'PYMODULE'),
+  ('bisect',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\bisect.py',
+   'PYMODULE'),
+  ('bz2',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\bz2.py',
+   'PYMODULE'),
+  ('calendar',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\calendar.py',
+   'PYMODULE'),
+  ('code',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\code.py',
+   'PYMODULE'),
+  ('codeop',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\codeop.py',
+   'PYMODULE'),
+  ('compression',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\__init__.py',
+   'PYMODULE'),
+  ('compression._common',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\_common\\__init__.py',
+   'PYMODULE'),
+  ('compression._common._streams',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\_common\\_streams.py',
+   'PYMODULE'),
+  ('compression.zstd',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\zstd\\__init__.py',
+   'PYMODULE'),
+  ('compression.zstd._zstdfile',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\zstd\\_zstdfile.py',
+   'PYMODULE'),
+  ('config', 'D:\\colegio_vaca_diez\\config.py', 'PYMODULE'),
+  ('contextlib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\contextlib.py',
+   'PYMODULE'),
+  ('contextvars',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\contextvars.py',
+   'PYMODULE'),
+  ('copy',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\copy.py',
+   'PYMODULE'),
+  ('csv',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\csv.py',
+   'PYMODULE'),
+  ('dataclasses',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\dataclasses.py',
+   'PYMODULE'),
+  ('datetime',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\datetime.py',
+   'PYMODULE'),
+  ('decimal',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\decimal.py',
+   'PYMODULE'),
+  ('decorators', 'D:\\colegio_vaca_diez\\decorators.py', 'PYMODULE'),
+  ('difflib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\difflib.py',
+   'PYMODULE'),
+  ('dis',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\dis.py',
+   'PYMODULE'),
+  ('email',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\__init__.py',
+   'PYMODULE'),
+  ('email._encoded_words',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_encoded_words.py',
+   'PYMODULE'),
+  ('email._header_value_parser',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_header_value_parser.py',
+   'PYMODULE'),
+  ('email._parseaddr',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_parseaddr.py',
+   'PYMODULE'),
+  ('email._policybase',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_policybase.py',
+   'PYMODULE'),
+  ('email.base64mime',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\base64mime.py',
+   'PYMODULE'),
+  ('email.charset',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\charset.py',
+   'PYMODULE'),
+  ('email.contentmanager',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\contentmanager.py',
+   'PYMODULE'),
+  ('email.encoders',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\encoders.py',
+   'PYMODULE'),
+  ('email.errors',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\errors.py',
+   'PYMODULE'),
+  ('email.feedparser',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\feedparser.py',
+   'PYMODULE'),
+  ('email.generator',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\generator.py',
+   'PYMODULE'),
+  ('email.header',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\header.py',
+   'PYMODULE'),
+  ('email.headerregistry',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\headerregistry.py',
+   'PYMODULE'),
+  ('email.iterators',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\iterators.py',
+   'PYMODULE'),
+  ('email.message',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\message.py',
+   'PYMODULE'),
+  ('email.parser',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\parser.py',
+   'PYMODULE'),
+  ('email.policy',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\policy.py',
+   'PYMODULE'),
+  ('email.quoprimime',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\quoprimime.py',
+   'PYMODULE'),
+  ('email.utils',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\utils.py',
+   'PYMODULE'),
+  ('fnmatch',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\fnmatch.py',
+   'PYMODULE'),
+  ('fractions',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\fractions.py',
+   'PYMODULE'),
+  ('ftplib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ftplib.py',
+   'PYMODULE'),
+  ('getopt',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\getopt.py',
+   'PYMODULE'),
+  ('gettext',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\gettext.py',
+   'PYMODULE'),
+  ('glob',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\glob.py',
+   'PYMODULE'),
+  ('gzip',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\gzip.py',
+   'PYMODULE'),
+  ('hashlib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\hashlib.py',
+   'PYMODULE'),
+  ('hmac',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\hmac.py',
+   'PYMODULE'),
+  ('http',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\__init__.py',
+   'PYMODULE'),
+  ('http.client',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\client.py',
+   'PYMODULE'),
+  ('http.cookiejar',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\cookiejar.py',
+   'PYMODULE'),
+  ('importlib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\__init__.py',
+   'PYMODULE'),
+  ('importlib._abc',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\_abc.py',
+   'PYMODULE'),
+  ('importlib._bootstrap',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\_bootstrap.py',
+   'PYMODULE'),
+  ('importlib._bootstrap_external',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\_bootstrap_external.py',
+   'PYMODULE'),
+  ('importlib.abc',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\abc.py',
+   'PYMODULE'),
+  ('importlib.machinery',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\machinery.py',
+   'PYMODULE'),
+  ('importlib.metadata',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\__init__.py',
+   'PYMODULE'),
+  ('importlib.metadata._adapters',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_adapters.py',
+   'PYMODULE'),
+  ('importlib.metadata._collections',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_collections.py',
+   'PYMODULE'),
+  ('importlib.metadata._functools',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_functools.py',
+   'PYMODULE'),
+  ('importlib.metadata._itertools',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_itertools.py',
+   'PYMODULE'),
+  ('importlib.metadata._meta',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_meta.py',
+   'PYMODULE'),
+  ('importlib.metadata._text',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_text.py',
+   'PYMODULE'),
+  ('importlib.readers',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\readers.py',
+   'PYMODULE'),
+  ('importlib.resources',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\__init__.py',
+   'PYMODULE'),
+  ('importlib.resources._adapters',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_adapters.py',
+   'PYMODULE'),
+  ('importlib.resources._common',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_common.py',
+   'PYMODULE'),
+  ('importlib.resources._functional',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_functional.py',
+   'PYMODULE'),
+  ('importlib.resources._itertools',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_itertools.py',
+   'PYMODULE'),
+  ('importlib.resources.abc',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\abc.py',
+   'PYMODULE'),
+  ('importlib.resources.readers',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\readers.py',
+   'PYMODULE'),
+  ('importlib.util',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\util.py',
+   'PYMODULE'),
+  ('inspect',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\inspect.py',
+   'PYMODULE'),
+  ('ipaddress',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ipaddress.py',
+   'PYMODULE'),
+  ('json',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\__init__.py',
+   'PYMODULE'),
+  ('json.decoder',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\decoder.py',
+   'PYMODULE'),
+  ('json.encoder',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\encoder.py',
+   'PYMODULE'),
+  ('json.scanner',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\scanner.py',
+   'PYMODULE'),
+  ('logging',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\logging\\__init__.py',
+   'PYMODULE'),
+  ('lzma',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\lzma.py',
+   'PYMODULE'),
+  ('mimetypes',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\mimetypes.py',
+   'PYMODULE'),
+  ('models', 'D:\\colegio_vaca_diez\\models.py', 'PYMODULE'),
+  ('netrc',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\netrc.py',
+   'PYMODULE'),
+  ('numbers',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\numbers.py',
+   'PYMODULE'),
+  ('opcode',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\opcode.py',
+   'PYMODULE'),
+  ('pathlib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pathlib\\__init__.py',
+   'PYMODULE'),
+  ('pathlib._os',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pathlib\\_os.py',
+   'PYMODULE'),
+  ('pickle',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pickle.py',
+   'PYMODULE'),
+  ('pprint',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pprint.py',
+   'PYMODULE'),
+  ('py_compile',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\py_compile.py',
+   'PYMODULE'),
+  ('quopri',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\quopri.py',
+   'PYMODULE'),
+  ('random',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\random.py',
+   'PYMODULE'),
+  ('routes', 'D:\\colegio_vaca_diez\\routes\\__init__.py', 'PYMODULE'),
+  ('routes.archivos', 'D:\\colegio_vaca_diez\\routes\\archivos.py', 'PYMODULE'),
+  ('routes.auth', 'D:\\colegio_vaca_diez\\routes\\auth.py', 'PYMODULE'),
+  ('routes.caja', 'D:\\colegio_vaca_diez\\routes\\caja.py', 'PYMODULE'),
+  ('routes.calificaciones',
+   'D:\\colegio_vaca_diez\\routes\\calificaciones.py',
+   'PYMODULE'),
+  ('routes.chat', 'D:\\colegio_vaca_diez\\routes\\chat.py', 'PYMODULE'),
+  ('routes.dashboard',
+   'D:\\colegio_vaca_diez\\routes\\dashboard.py',
+   'PYMODULE'),
+  ('routes.estudiantes',
+   'D:\\colegio_vaca_diez\\routes\\estudiantes.py',
+   'PYMODULE'),
+  ('routes.faltas', 'D:\\colegio_vaca_diez\\routes\\faltas.py', 'PYMODULE'),
+  ('routes.gastos', 'D:\\colegio_vaca_diez\\routes\\gastos.py', 'PYMODULE'),
+  ('routes.mensajes', 'D:\\colegio_vaca_diez\\routes\\mensajes.py', 'PYMODULE'),
+  ('routes.pagos', 'D:\\colegio_vaca_diez\\routes\\pagos.py', 'PYMODULE'),
+  ('routes.personal', 'D:\\colegio_vaca_diez\\routes\\personal.py', 'PYMODULE'),
+  ('routes.portal_padres',
+   'D:\\colegio_vaca_diez\\routes\\portal_padres.py',
+   'PYMODULE'),
+  ('routes.profesores_portal',
+   'D:\\colegio_vaca_diez\\routes\\profesores_portal.py',
+   'PYMODULE'),
+  ('routes.pwa', 'D:\\colegio_vaca_diez\\routes\\pwa.py', 'PYMODULE'),
+  ('routes.reportes', 'D:\\colegio_vaca_diez\\routes\\reportes.py', 'PYMODULE'),
+  ('routes.rubricas', 'D:\\colegio_vaca_diez\\routes\\rubricas.py', 'PYMODULE'),
+  ('routes.superadmin',
+   'D:\\colegio_vaca_diez\\routes\\superadmin.py',
+   'PYMODULE'),
+  ('routes.superadmin_api',
+   'D:\\colegio_vaca_diez\\routes\\superadmin_api.py',
+   'PYMODULE'),
+  ('secrets',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\secrets.py',
+   'PYMODULE'),
+  ('selectors',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\selectors.py',
+   'PYMODULE'),
+  ('shutil',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\shutil.py',
+   'PYMODULE'),
+  ('signal',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\signal.py',
+   'PYMODULE'),
+  ('socket',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py',
+   'PYMODULE'),
+  ('sqlite3',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sqlite3\\__init__.py',
+   'PYMODULE'),
+  ('sqlite3.__main__',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sqlite3\\__main__.py',
+   'PYMODULE'),
+  ('sqlite3.dbapi2',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sqlite3\\dbapi2.py',
+   'PYMODULE'),
+  ('sqlite3.dump',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sqlite3\\dump.py',
+   'PYMODULE'),
+  ('ssl',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ssl.py',
+   'PYMODULE'),
+  ('statistics',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\statistics.py',
+   'PYMODULE'),
+  ('string',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\string\\__init__.py',
+   'PYMODULE'),
+  ('stringprep',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\stringprep.py',
+   'PYMODULE'),
+  ('subprocess',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\subprocess.py',
+   'PYMODULE'),
+  ('sysconfig',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sysconfig\\__init__.py',
+   'PYMODULE'),
+  ('tarfile',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tarfile.py',
+   'PYMODULE'),
+  ('tempfile',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tempfile.py',
+   'PYMODULE'),
+  ('textwrap',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\textwrap.py',
+   'PYMODULE'),
+  ('threading',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\threading.py',
+   'PYMODULE'),
+  ('token',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\token.py',
+   'PYMODULE'),
+  ('tokenize',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tokenize.py',
+   'PYMODULE'),
+  ('tracemalloc',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tracemalloc.py',
+   'PYMODULE'),
+  ('typing',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\typing.py',
+   'PYMODULE'),
+  ('urllib',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\__init__.py',
+   'PYMODULE'),
+  ('urllib.error',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\error.py',
+   'PYMODULE'),
+  ('urllib.parse',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\parse.py',
+   'PYMODULE'),
+  ('urllib.request',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\request.py',
+   'PYMODULE'),
+  ('urllib.response',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\response.py',
+   'PYMODULE'),
+  ('utils', 'D:\\colegio_vaca_diez\\utils\\__init__.py', 'PYMODULE'),
+  ('utils.boletin_generator',
+   'D:\\colegio_vaca_diez\\utils\\boletin_generator.py',
+   'PYMODULE'),
+  ('utils.boletin_nidito_generator',
+   'D:\\colegio_vaca_diez\\utils\\boletin_nidito_generator.py',
+   'PYMODULE'),
+  ('utils.reporte_calificaciones_generator',
+   'D:\\colegio_vaca_diez\\utils\\reporte_calificaciones_generator.py',
+   'PYMODULE'),
+  ('utils_backup', 'D:\\colegio_vaca_diez\\utils_backup.py', 'PYMODULE'),
+  ('utils_pdf', 'D:\\colegio_vaca_diez\\utils_pdf.py', 'PYMODULE'),
+  ('zipfile',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zipfile\\__init__.py',
+   'PYMODULE'),
+  ('zipfile._path',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zipfile\\_path\\__init__.py',
+   'PYMODULE'),
+  ('zipfile._path.glob',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zipfile\\_path\\glob.py',
+   'PYMODULE'),
+  ('zoneinfo',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zoneinfo\\__init__.py',
+   'PYMODULE'),
+  ('zoneinfo._common',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zoneinfo\\_common.py',
+   'PYMODULE'),
+  ('zoneinfo._tzpath',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zoneinfo\\_tzpath.py',
+   'PYMODULE'),
+  ('zoneinfo._zoneinfo',
+   'C:\\Users\\CANAL '
+   '9\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zoneinfo\\_zoneinfo.py',
+   'PYMODULE')])

@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">
+                <i class="bi bi-cash-coin me-2"></i> Módulo de Cobros y Amortizaciones
+            </h4>
+            <span class="badge bg-light text-dark fs-6">Gestión {{ anio_actual }}</span>
+        </div>
+
+        <div class="card-body">
+            <!-- DATOS BÁSICOS DEL ESTUDIANTE -->
+            <div class="row mb-4 bg-light p-3 rounded border">
+                <div class="col-md-3">
+                    <strong>Estudiante:</strong><br>
+                    <span class="fs-5 text-dark">{{ est.apellidos }}, {{ est.nombres }}</span>
+                </div>
+                <div class="col-md-2">
+                    <strong>C.I.:</strong><br>
+                    {{ est.ci or 'S/N' }}
+                </div>
+                <div class="col-md-2">
+                    <strong>Curso:</strong><br>
+                    {{ est.curso or 'No asignado' }}
+                </div>
+                <div class="col-md-2">
+                    <strong>Pensión Oficial:</strong><br>
+                    <span class="fs-5 text-primary fw-bold">Bs. {{ "%.2f"|format(est.pension or 0) }}</span>
+                </div>
+                <div class="col-md-3">
+                    <strong>Tutor:</strong><br>
+                    {{ padre.nombres ~ ' ' ~ padre.apellidos if padre else 'No registrado' }}
+                </div>
+            </div>
+
+            <!-- PESTAÑAS DE COBRO -->
+            <ul class="nav nav-pills nav-fill mb-4" id="pills-tab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active fs-5 fw-bold" id="tab-pensiones-tab" data-bs-toggle="pill" data-bs-target="#tab-pensiones" type="button" role="tab">
+                        <i class="bi bi-calendar-check me-2"></i> 1. Mensualidades / Amortizaciones (Múltiples)
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fs-5 fw-bold" id="tab-otros-tab" data-bs-toggle="pill" data-bs-target="#tab-otros" type="button" role="tab">
+                        <i class="bi bi-bag-check me-2"></i> 2. Otros Conceptos (Inscripción, Poleras, Snack)
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="pills-tabContent">
+                <!-- PANEL 1: PENSIONES Y AMORTIZACIONES CON CHECKBOXES -->
+                <div class="tab-pane fade show active" id="tab-pensiones" role="tabpanel">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-table me-2"></i>Estado de Cuenta del Año Lectivo (Marque los meses a cancelar)</h5>
+                    
+                    <form method="POST" id="form-pago-multiple">
+                        <input type="hidden" name="accion_cobro" value="pension">
+                        
+                        <div class="table-responsive mb-4">
+                            <table class="table table-bordered table-hover align-middle">
+                                <thead class="table-dark text-center">
+                                    <tr>
+                                        <th style="width: 5%;">
+                                            <input type="checkbox" id="seleccionar_todos" class="form-check-input" title="Seleccionar todos los meses pendientes">
+                                        </th>
+                                        <th>Mes</th>
+                                        <th>Costo Mensual</th>
+                                        <th>Total Pagado</th>
+                                        <th>Saldo Pendiente</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if estado_meses %}
+                                        {% for em in estado_meses %}
+                                        <tr class="text-center" id="fila_{{ em.mes }}">
+                                            <td>
+                                                {# Forzamos habilitación si hay saldo pendiente o si la pensión está activa #}
+                                                {% if em.saldo > 0 or em.estado != 'Cancelado' %}
+                                                <input type="checkbox" name="meses_seleccionados" value="{{ em.mes }}" data-saldo="{{ em.saldo }}" class="form-check-input check-mes" onchange="calcularTotalSeleccionado()">
+                                                {% endif %}
+                                            </td>
+                                            <td class="fw-bold">{{ em.mes }}</td>
+                                            <td>Bs. {{ "%.2f"|format(em.costo) }}</td>
+                                            <td class="text-success fw-bold">Bs. {{ "%.2f"|format(em.abonado) }}</td>
+                                            <td class="text-danger fw-bold">Bs. {{ "%.2f"|format(em.saldo) }}</td>
+                                            <td>
+                                                {% if em.estado == 'Cancelado' %}
+                                                    <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Cancelado</span>
+                                                {% elif em.estado == 'Abono Parcial' %}
+                                                    <span class="badge bg-warning text-dark fs-6"><i class="bi bi-clock-history me-1"></i>Abono Parcial</span>
+                                                {% else %}
+                                                    <span class="badge bg-danger fs-6"><i class="bi bi-x-circle me-1"></i>Pendiente</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- CAJA DE COBRO MÚLTIPLE CONSOLIDADO -->
+                        <div class="card border-primary shadow-sm" id="caja_cobro">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Consolidado de Pago de Pensiones Seleccionadas</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Meses Seleccionados</label>
+                                        <div class="input-group input-group-lg">
+                                            <input type="text" id="lbl_meses_seleccionados" class="form-control fw-bold bg-light" readonly value="Ninguno">
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Deuda Total Seleccionada</label>
+                                        <div class="input-group input-group-lg">
+                                            <span class="input-group-text bg-light text-danger fw-bold">Bs.</span>
+                                            <input type="text" id="lbl_saldo_pendiente" class="form-control fw-bold text-danger bg-light" readonly value="0.00">
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold text-success">Monto a Depositar Hoy (Bs.) *</label>
+                                        <div class="input-group input-group-lg">
+                                            <span class="input-group-text bg-light text-success fw-bold">Bs.</span>
+                                            <input type="number" step="0.01" min="1" name="monto_abono" id="input_abono" class="form-control border-success fw-bold text-success" placeholder="0.00" required>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Descuento Especial (Bs.)</label>
+                                        <input type="number" step="0.01" min="0" name="descuento" id="input_descuento" class="form-control" value="0">
+                                    </div>
+
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Método de Pago *</label>
+                                        <select name="metodo_pago" class="form-select" required>
+                                            <option value="Efectivo" selected>Efectivo</option>
+                                            <option value="Bancario">Bancario / Transferencia</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-4 mb-3 d-flex align-items-end justify-content-end">
+                                        <button type="submit" class="btn btn-success btn-lg w-100 fw-bold" id="btn_confirmar" disabled>
+                                            <i class="bi bi-check2-circle me-1"></i> Confirmar Pago Múltiple
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- PANEL 2: OTROS CONCEPTOS -->
+                <div class="tab-pane fade" id="tab-otros" role="tabpanel">
+                    <div class="card border-info shadow-sm">
+                        <div class="card-header bg-info text-dark">
+                            <h5 class="mb-0"><i class="bi bi-cart-check me-2"></i>Cobro de Matrícula, Poleras, Cuotas Especiales o Snack</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST">
+                                <input type="hidden" name="accion_cobro" value="otro_concepto">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Tipo de Concepto / Rubro *</label>
+                                        <select name="tipo_concepto" class="form-select form-select-lg border-info fw-bold" required>
+                                            <option value="Inscripción / Matrícula">Inscripción / Matrícula</option>
+                                            <option value="Uniforme / Polera" selected>Uniforme / Polera del Colegio</option>
+                                            <option value="Cuota de Actividad">Cuota de Actividad (Aniversario, Deportes)</option>
+                                            <option value="Snack / Cafetería">Consumo en Snack / Cafetería</option>
+                                            <option value="Material / Texto">Material Escolar / Textos</option>
+                                            <option value="Otro">Otro Rubro</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-5 mb-3">
+                                        <label class="form-label fw-bold">Detalle Específico / Descripción *</label>
+                                        <input type="text" name="detalle_concepto" class="form-control form-control-lg" placeholder="Ej: Polera Talla 14, Cuota Día del Niño..." required>
+                                    </div>
+
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label fw-bold text-success">Monto a Cobrar (Bs.) *</label>
+                                        <div class="input-group input-group-lg">
+                                            <span class="input-group-text bg-light text-success fw-bold">Bs.</span>
+                                            <input type="number" step="0.01" min="1" name="monto_abono" class="form-control border-success fw-bold text-success" placeholder="0.00" required>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row mt-2">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label fw-bold">Método de Pago *</label>
+                                        <select name="metodo_pago" class="form-select" required>
+                                            <option value="Efectivo" selected>Efectivo</option>
+                                            <option value="Bancario">Bancario / Transferencia</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-8 mb-3 d-flex align-items-end justify-content-end">
+                                        <button type="submit" class="btn btn-info btn-lg text-white fw-bold">
+                                            <i class="bi bi-printer me-1"></i> Registrar y Emitir Recibo
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-start mt-4 pt-3 border-top">
+                <a href="{{ url_for('estudiantes.ver_estudiante', id=est.id) }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left me-1"></i> Volver al Cardex
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const seleccionarTodos = document.getElementById('seleccionar_todos');
+    const checkboxes = document.querySelectorAll('.check-mes');
+
+    if (seleccionarTodos) {
+        seleccionarTodos.addEventListener('change', function() {
+            checkboxes.forEach(cb => {
+                cb.checked = seleccionarTodos.checked;
+            });
+            calcularTotalSeleccionado();
+        });
+    }
+});
+
+function calcularTotalSeleccionado() {
+    const checkboxes = document.querySelectorAll('.check-mes:checked');
+    let sumaSaldo = 0;
+    let mesesNombres = [];
+
+    checkboxes.forEach(cb => {
+        sumaSaldo += parseFloat(cb.getAttribute('data-saldo')) || 0;
+        mesesNombres.push(cb.value);
+    });
+
+    const lblSaldo = document.getElementById('lbl_saldo_pendiente');
+    const lblMeses = document.getElementById('lbl_meses_seleccionados');
+    const inputAbono = document.getElementById('input_abono');
+    const btnConfirmar = document.getElementById('btn_confirmar');
+
+    lblSaldo.value = sumaSaldo.toFixed(2);
+    inputAbono.value = sumaSaldo.toFixed(2);
+    lblMeses.value = mesesNombres.length > 0 ? mesesNombres.join(', ') : 'Ninguno';
+
+    if (checkboxes.length > 0 && sumaSaldo > 0) {
+        btnConfirmar.disabled = false;
+    } else {
+        btnConfirmar.disabled = true;
+    }
+}
+</script>
+{% endblock %}

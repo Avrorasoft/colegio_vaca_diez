@@ -1,0 +1,45 @@
+
+This file lists modules PyInstaller was not able to find. This does not
+necessarily mean these modules are required for running your program. Both
+Python's standard library and 3rd-party Python packages often conditionally
+import optional modules, some of which may be available only on certain
+platforms.
+
+Types of import:
+* top-level: imported at the top-level - look at these first
+* conditional: imported within an if-statement
+* delayed: imported within a function
+* optional: imported within a try-except-statement
+
+IMPORTANT: Do NOT post this list to the issue-tracker. Use it as a basis for
+            tracking down the missing module yourself. Thanks!
+
+missing module named 'collections.abc' - imported by tracemalloc (top-level), typing (top-level), traceback (top-level), _colorize (top-level), logging (top-level), selectors (top-level), http.client (top-level), importlib.resources.readers (top-level), inspect (top-level), sqlite3.dbapi2 (top-level)
+missing module named _scproxy - imported by urllib.request (conditional)
+missing module named posix - imported by posixpath (optional), shutil (conditional), importlib._bootstrap_external (conditional), pathlib._os (optional), os (conditional, optional)
+missing module named resource - imported by posix (top-level)
+missing module named fcntl - imported by pathlib._os (optional), subprocess (optional)
+missing module named grp - imported by shutil (delayed, optional), tarfile (optional), pathlib (optional), subprocess (delayed, conditional, optional)
+missing module named pwd - imported by posixpath (delayed, conditional, optional), shutil (delayed, optional), tarfile (optional), pathlib (optional), netrc (delayed, optional), subprocess (delayed, conditional, optional)
+missing module named _frozen_importlib_external - imported by importlib._bootstrap (delayed), importlib (optional), importlib.abc (optional)
+excluded module named _frozen_importlib - imported by importlib (optional), importlib.abc (optional)
+missing module named flask_login - imported by D:\colegio_vaca_diez\app.py (delayed, optional)
+missing module named sqlalchemy - imported by models (top-level), routes.dashboard (top-level), routes.estudiantes (top-level), routes.calificaciones (delayed), routes.caja (top-level), routes.mensajes (top-level), routes.pagos (top-level), routes.superadmin (top-level), routes.reportes (top-level)
+missing module named 'werkzeug.security' - imported by models (top-level), routes.personal (top-level), routes.profesores_portal (top-level), routes.superadmin (top-level), routes.pwa (top-level)
+missing module named _posixsubprocess - imported by subprocess (conditional)
+missing module named 'reportlab.platypus' - imported by routes.estudiantes (delayed, optional), utils_pdf (delayed, optional), utils.boletin_nidito_generator (top-level), utils.boletin_generator (top-level), utils.reporte_calificaciones_generator (top-level), routes.personal (delayed), routes.pagos (delayed, optional)
+missing module named 'reportlab.lib' - imported by routes.estudiantes (delayed, optional), utils_pdf (top-level), utils.boletin_nidito_generator (top-level), utils.boletin_generator (top-level), utils.reporte_calificaciones_generator (top-level), routes.personal (delayed), routes.pagos (delayed, optional)
+missing module named qrcode - imported by utils.boletin_nidito_generator (top-level), utils.boletin_generator (top-level), utils.reporte_calificaciones_generator (top-level)
+missing module named 'reportlab.pdfgen' - imported by utils.boletin_nidito_generator (top-level), utils.boletin_generator (top-level), utils.reporte_calificaciones_generator (top-level)
+missing module named 'sqlalchemy.orm' - imported by routes.estudiantes (top-level), routes.calificaciones (top-level)
+missing module named reportlab - imported by routes.estudiantes (delayed, optional)
+missing module named PIL - imported by routes.estudiantes (top-level)
+missing module named readline - imported by code (delayed, conditional, optional), sqlite3.__main__ (delayed, conditional, optional)
+missing module named cloudinary - imported by config (top-level)
+missing module named 'sqlalchemy.engine' - imported by models (top-level)
+missing module named flask_sqlalchemy - imported by models (top-level)
+missing module named 'werkzeug.utils' - imported by D:\colegio_vaca_diez\app.py (top-level), routes.estudiantes (top-level), routes.personal (top-level), routes.chat (top-level), routes.archivos (top-level), routes.faltas (top-level), routes.portal_padres (top-level), routes.superadmin (top-level)
+missing module named 'flask_wtf.csrf' - imported by D:\colegio_vaca_diez\app.py (top-level)
+missing module named werkzeug - imported by D:\colegio_vaca_diez\app.py (top-level)
+missing module named flask_wtf - imported by D:\colegio_vaca_diez\app.py (top-level)
+missing module named flask - imported by D:\colegio_vaca_diez\app.py (top-level), routes.auth (top-level), routes.dashboard (top-level), decorators (top-level), routes.estudiantes (top-level), routes.personal (top-level), routes.calificaciones (top-level), routes.caja (top-level), routes.gastos (top-level), routes.mensajes (top-level), routes.chat (top-level), routes.archivos (top-level), routes.profesores_portal (top-level), routes.faltas (top-level), routes.pagos (top-level), routes.portal_padres (top-level), routes.superadmin (top-level), routes.superadmin_api (top-level), routes.pwa (top-level), routes.reportes (top-level), routes.rubricas (top-level)

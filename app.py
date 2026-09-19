@@ -1029,12 +1029,26 @@ LOGIN_TEMPLATE = """
 
 
 # ==============================================================================
-# EJECUCIÓN DE LA APLICACIÓN Y AUTOREPARO
+# EJECUCIÓN DE LA APLICACIÓN Y AUTOREPARO (MODO TRANSVERSAL RED LOCAL)
 # ==============================================================================
 #import logging
 # Silenciar la advertencia del servidor de desarrollo de Werkzeug
 #log = logging.getLogger('werkzeug')
 #log.setLevel(logging.ERROR)
+
+import socket
+
+def _obtener_ip_local():
+    """Obtiene dinámicamente la IP local en la red Wi-Fi o Ethernet de la institución."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
 if __name__ == '__main__':
     with app.app_context():
         # Ejecutar autoreparo y verificación inteligente antes de levantar tablas
@@ -1057,16 +1071,21 @@ if __name__ == '__main__':
 
         clave_pwa = _obtener_clave('pwa_password', 'N/A')
         clave_admin = _obtener_clave('superadmin_password', 'N/A')
+        ip_servidor = _obtener_ip_local()
         
-        print("=" * 60)
-        print(f"🔐 CONTRASEÑA PWA ACTUAL: {clave_pwa}")
-        print(f"🔒 CONTRASEÑA SUPERADMIN: {clave_admin}")
-        print("   (Cámbielas desde la Bóveda Superadmin)")
-        print("=" * 60)
+        print("=" * 65)
+        print(" 🚀 SERVIDOR TRANSVERSAL ASestud - INICIADO EN RED LOCAL")
+        print(f" • Acceso Servidor (Local): http://127.0.0.1:5000")
+        print(f" • Acceso Red (Otras PCs):   http://{ip_servidor}:5000")
+        print(f" 🔐 CONTRASEÑA PWA ACTUAL: {clave_pwa}")
+        print(f" 🔒 CONTRASEÑA SUPERADMIN: {clave_admin}")
+        print("    (Cámbielas desde la Bóveda Superadmin)")
+        print("=" * 65)
 
     ES_PRODUCCION = os.environ.get('FLASK_ENV') == 'production'
     app.run(
         debug=not ES_PRODUCCION,
         host='0.0.0.0',
-        port=5000
+        port=5000,
+        threaded=True
     )

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4"><i class="bi bi-pencil-square"></i> Ingresar Notas: {{ materia.nombre }} - {{ curso }}</h3>
+    
+    <div class="card">
+        <div class="card-body">
+            <form method="POST">
+                <input type="hidden" name="curso" value="{{ curso }}">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Estudiante</th>
+                            <th class="text-center" style="width: 160px;">Promedio Actual</th>
+                            <th>Tipo de Evaluación</th>
+                            <th>Nota (0-100)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for est in estudiantes %}
+                        <tr>
+                            <td class="fw-bold">{{ est.apellidos }}, {{ est.nombres }}</td>
+                            <td class="text-center">
+                                <span class="badge {% if promedios.get(est.id, 0) >= 51 %}bg-success{% else %}bg-danger{% endif %} fs-6 px-3 py-2 shadow-sm">
+                                    {{ "%.1f"|format(promedios.get(est.id, 0)) }}
+                                </span>
+                            </td>
+                            <td>
+                                <select name="tipo_{{ est.id }}" class="form-select form-select-sm">
+                                    <option value="Parcial 1">Parcial 1</option>
+                                    <option value="Parcial 2">Parcial 2</option>
+                                    <option value="Parcial 3">Parcial 3</option>
+                                    <option value="Examen Final">Examen Final</option>
+                                </select>
+                            </td>
+                            <td>
+                                <input type="number" name="nota_{{ est.id }}" class="form-control form-control-sm" min="0" max="100" step="0.1">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button type="submit" class="btn btn-success btn-lg">
+                    <i class="bi bi-save"></i> Guardar Notas
+                </button>
+                <a href="{{ url_for('calificaciones.libro_notas', curso=curso) }}" class="btn btn-secondary btn-lg">Cancelar</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

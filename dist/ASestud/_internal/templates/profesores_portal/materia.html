@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .cal-header-box {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 20px 24px;
+        margin-bottom: 24px;
+    }
+    .rubrica-pill {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 20px;
+        padding: 4px 14px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-right: 8px;
+        margin-top: 6px;
+    }
+    .input-nota-entera {
+        font-weight: 700;
+        font-size: 1rem;
+        max-width: 95px;
+        margin: 0 auto;
+        border: 2px solid #ced4da;
+    }
+    .input-nota-entera:focus {
+        border-color: #1e3c72;
+        box-shadow: 0 0 0 0.2rem rgba(30, 60, 114, 0.25);
+    }
+    .total-badge {
+        display: inline-block;
+        min-width: 50px;
+        padding: 6px 10px;
+        font-size: 1rem;
+        font-weight: 800;
+        border-radius: 6px;
+    }
+    .total-aprobado {
+        background-color: #d1e7dd;
+        color: #0f5132;
+        border: 1px solid #badbcc;
+    }
+    .total-reprobado {
+        background-color: #f8d7da;
+        color: #842029;
+        border: 1px solid #f5c2c7;
+    }
+    @media print {
+        .no-print, .btn, nav, .sidebar, footer {
+            display: none !important;
+        }
+        .cal-header-box {
+            background: none !important;
+            color: #000 !important;
+            border-bottom: 2px solid #000;
+            padding: 0 0 10px 0 !important;
+        }
+        .table {
+            border: 1px solid #000 !important;
+        }
+        .table th, .table td {
+            border: 1px solid #000 !important;
+            color: #000 !important;
+        }
+    }
+</style>
+
+<div class="container-fluid py-3">
+    <!-- Cabecera de la Materia con Indicador de Precedencia -->
+    <div class="cal-header-box shadow-sm">
+        <div class="row align-items-center">
+            <div class="col-md-7">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-light text-dark fw-bold">{{ nivel|upper }}</span>
+                    {% if origen_rubrica == 'especifico' %}
+                        <span class="badge bg-warning text-dark fw-bold">
+                            <i class="fas fa-star me-1"></i> Rúbrica Específica de Materia
+                        </span>
+                    {% else %}
+                        <span class="badge bg-info text-white fw-bold">
+                            <i class="fas fa-university me-1"></i> Rúbrica General Institucional
+                        </span>
+                    {% endif %}
+                </div>
+                <h2 class="fw-bold mb-1 text-white">{{ materia.nombre }}</h2>
+                <div class="text-light">
+                    <i class="fas fa-chalkboard me-1"></i> <strong>Curso:</strong> {{ materia.curso_id }} &nbsp;|&nbsp;
+                    <i class="fas fa-calendar-alt me-1"></i> <strong>Periodo:</strong> {{ periodo_sel }}
+                </div>
+                <div class="mt-2">
+                    {% if es_nidito %}
+                        <span class="rubrica-pill"><i class="fas fa-child me-1"></i> Evaluación Cualitativa y Descriptiva (Nidito)</span>
+                    {% else %}
+                        {% for c in criterios %}
+                            <span class="rubrica-pill">
+                                {{ c.nombre }}: {{ c.puntaje_maximo }} pts 
+                                {% if not c.permite_decimales %}(Entero 0-{{ c.puntaje_maximo }}){% else %}(Decimales){% endif %}
+                            </span>
+                        {% endfor %}
+                        <span class="rubrica-pill" style="background: #28a745; border-color: #28a745;">Total: 100 pts</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-5 text-md-end mt-3 mt-md-0 no-print">
+                <form method="GET" action="{{ url_for('profesores_portal.ver_materia', materia_id=materia.id) }}" class="d-inline-block me-2">
+                    <select name="periodo" class="form-select fw-bold border-0 shadow-sm" onchange="this.form.submit()">
+                        {% for p in periodos %}
+                            <option value="{{ p }}" {% if periodo_sel == p %}selected{% endif %}>{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+                <button type="button" onclick="window.print()" class="btn btn-outline-light me-2 fw-bold">
+                    <i class="fas fa-print me-1"></i> Imprimir
+                </button>
+                <a href="{{ url_for('profesores_portal.index') }}" class="btn btn-light fw-bold text-primary">
+                    <i class="fas fa-arrow-left me-1"></i> Volver
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Planilla de Calificaciones -->
+    <form method="POST" action="{{ url_for('profesores_portal.guardar_notas_matriz', materia_id=materia.id) }}" id="formPlanillaNotas">
+        <input type="hidden" name="periodo" value="{{ periodo_sel }}">
+
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="tablaPlanilla">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 40px;" class="text-center">#</th>
+                                <th style="min-width: 230px;">Estudiante</th>
+                                <th style="width: 110px;">C.I.</th>
+
+                                {% if es_nidito %}
+                                    {% for c in criterios %}
+                                        {% if not c.es_descriptivo %}
+                                            <th class="text-center" style="min-width: 180px;">{{ c.nombre }}</th>
+                                        {% else %}
+                                            <th style="min-width: 300px;">{{ c.nombre }}</th>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% else %}
+                                    {% for c in criterios %}
+                                        <th class="text-center" style="width: 140px;">
+                                            <div>{{ c.nombre }}</div>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary small">
+                                                /{{ c.puntaje_maximo }} pts {% if not c.permite_decimales %}(Entero){% endif %}
+                                            </span>
+                                        </th>
+                                    {% endfor %}
+                                    <th class="text-center" style="width: 110px;">Total (/100)</th>
+                                    <th class="text-center" style="width: 110px;">Estado</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if estudiantes and estudiantes|length > 0 %}
+                                {% for est in estudiantes %}
+                                <tr>
+                                    <td class="text-center text-muted fw-bold">{{ loop.index }}</td>
+                                    <td>
+                                        <div class="fw-bold text-dark fs-6">{{ est.apellidos }}, {{ est.nombres }}</div>
+                                        <small class="text-muted">{{ est.curso }}</small>
+                                    </td>
+                                    <td><span class="badge bg-light text-dark border">{{ est.ci }}</span></td>
+
+                                    {% if es_nidito %}
+                                        {% for c in criterios %}
+                                            {% set reg_cal = cal_matrix.get((est.id, c.nombre)) %}
+                                            {% if not c.es_descriptivo %}
+                                                <td class="text-center">
+                                                    <select name="criterio_{{ est.id }}_{{ c.id }}" class="form-select form-select-sm fw-bold">
+                                                        <option value="">-- Sin Calificar --</option>
+                                                        {% set opciones = (c.opciones_cualitativas or 'Logrado,En Proceso,En Inicio').split(',') %}
+                                                        {% for op in opciones %}
+                                                            <option value="{{ op }}" {% if reg_cal and reg_cal.valoracion_cualitativa == op %}selected{% endif %}>{{ op }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </td>
+                                            {% else %}
+                                                <td>
+                                                    <textarea name="criterio_{{ est.id }}_{{ c.id }}" class="form-control form-control-sm" rows="2" placeholder="Describa el desarrollo formativo y observaciones...">{{ reg_cal.informe_descriptivo if reg_cal else '' }}</textarea>
+                                                </td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        {% for c in criterios %}
+                                            {% set reg_cal = cal_matrix.get((est.id, c.nombre)) %}
+                                            <td class="text-center">
+                                                <input 
+                                                    type="number" 
+                                                    name="criterio_{{ est.id }}_{{ c.id }}" 
+                                                    class="form-control form-control-sm text-center input-nota-entera input-nota-estudiante"
+                                                    data-estudiante="{{ est.id }}"
+                                                    data-max="{{ c.puntaje_maximo }}"
+                                                    min="0" 
+                                                    max="{{ c.puntaje_maximo }}" 
+                                                    step="{% if c.permite_decimales %}0.1{% else %}1{% endif %}"
+                                                    value="{% if reg_cal and reg_cal.nota is not none %}{% if not c.permite_decimales %}{{ reg_cal.nota|int }}{% else %}{{ reg_cal.nota }}{% endif %}{% endif %}"
+                                                    placeholder="0"
+                                                    required
+                                                >
+                                            </td>
+                                        {% endfor %}
+
+                                        {% set nota_fin = notas_finales.get(est.id, 0.0) %}
+                                        <td class="text-center">
+                                            <span id="total_{{ est.id }}" class="total-badge {% if nota_fin >= 51 %}total-aprobado{% else %}total-reprobado{% endif %}">
+                                                {{ "%.1f"|format(nota_fin) if nota_fin else '0.0' }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center" id="estado_box_{{ est.id }}">
+                                            {% if nota_fin >= 51 %}
+                                                <span class="badge bg-success">Aprobado</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">Reprobado</span>
+                                            {% endif %}
+                                        </td>
+                                    {% endif %}
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="10" class="text-center py-4 text-muted">
+                                        No se registran estudiantes activos inscritos en este curso.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer bg-white p-3 d-flex justify-content-between align-items-center no-print">
+                <div class="text-muted small">
+                    <i class="fas fa-lock text-primary me-1"></i> Rúbrica oficial establecida por la Administración Escolar.
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary fw-bold px-4 shadow-sm">
+                        <i class="fas fa-save me-2"></i> Guardar Calificaciones
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const inputs = document.querySelectorAll('.input-nota-estudiante');
+
+        function recalcularFila(estId) {
+            const inputsEstudiante = document.querySelectorAll(`.input-nota-estudiante[data-estudiante="${estId}"]`);
+            let suma = 0.0;
+
+            inputsEstudiante.forEach(inp => {
+                let max = parseFloat(inp.getAttribute('data-max')) || 100.0;
+                let val = parseFloat(inp.value) || 0.0;
+
+                if (val > max) {
+                    val = max;
+                    inp.value = max;
+                } else if (val < 0) {
+                    val = 0;
+                    inp.value = 0;
+                }
+
+                suma += val;
+            });
+
+            suma = Math.min(100.0, Math.max(0.0, suma));
+
+            const totalBadge = document.getElementById(`total_${estId}`);
+            const estadoBox = document.getElementById(`estado_box_${estId}`);
+
+            if (totalBadge) {
+                totalBadge.textContent = suma.toFixed(1);
+                if (suma >= 51.0) {
+                    totalBadge.className = 'total-badge total-aprobado';
+                    if (estadoBox) estadoBox.innerHTML = '<span class="badge bg-success">Aprobado</span>';
+                } else {
+                    totalBadge.className = 'total-badge total-reprobado';
+                    if (estadoBox) estadoBox.innerHTML = '<span class="badge bg-danger">Reprobado</span>';
+                }
+            }
+        }
+
+        inputs.forEach(inp => {
+            inp.addEventListener('input', function () {
+                const estId = this.getAttribute('data-estudiante');
+                recalcularFila(estId);
+            });
+        });
+    });
+</script>
+{% endblock %}
