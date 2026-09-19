@@ -581,15 +581,12 @@
                     Dashboard
                 </a>
 
+                <!-- MÓDULO UNIFICADO: ESTUDIANTES Y COBROS -->
                 <a class="nav-link" href="/estudiantes/">
                     <i class="bi bi-mortarboard-fill"></i>
-                    Estudiantes
+                    Estudiantes y Cobros
                 </a>
-                <!-- MÓDULO DE PAGOS Y DEUDORES -->
-                <a class="nav-link" href="{{ url_for('pagos.index') }}">
-                    <i class="bi bi-cash-stack"></i>
-                    <span>Gestión de Pagos</span>
-                </a>
+                
                 <a class="nav-link text-danger" href="{{ url_for('pagos.reporte_deudores') }}">
                     <i class="bi bi-exclamation-octagon-fill"></i>
                     <span>Deudores por Curso</span>
@@ -612,7 +609,7 @@
                     Faltas y Licencias
                 </a>
 
-                <!-- Reportes de Caja (Dropdown adaptado a la estética nav-link) -->
+                <!-- Reportes de Caja -->
                 <div class="nav-item dropdown px-3 my-1">
                     <a class="nav-link dropdown-toggle p-0" href="#" data-bs-toggle="dropdown">
                         <i class="bi bi-file-earmark-bar-graph"></i> Reportes de Caja

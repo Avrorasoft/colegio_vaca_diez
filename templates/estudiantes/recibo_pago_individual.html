@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Recibo de Pago #{{ pago.id }} - {{ est.apellidos }} {{ est.nombres }}</title>
+    <title>Recibo de Pago #{{ pago_base.id }} - {{ est.apellidos }} {{ est.nombres }}</title>
     <style>
         @page { size: letter portrait; margin: 15mm; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1e293b; margin: 0; padding: 20px; font-size: 13px; }
@@ -29,8 +29,8 @@
     </style>
 </head>
 <body>
-    {# LECTURA ESTRICTA E INMUTABLE DEL TURNO REGISTRADO EN LA BD #}
-    {% set turno_cajero = (pago.turno_responsable or '')|lower|trim %}
+    {# LECTURA ESTRICTA E INMUTABLE DEL TURNO REGISTRADO EN LA BD BASADO EN LA TRANSACCIÓN BASE #}
+    {% set turno_cajero = (pago_base.turno_responsable or '')|lower|trim %}
     {% set es_tarde = ('tarde' in turno_cajero) %}
     {% set es_manana = ('mañana' in turno_cajero or 'manana' in turno_cajero) %}
 
@@ -42,12 +42,12 @@
     <div class="comprobante">
         <div class="header">
             <div>
-                <h2>Colegio Dr. Antonio Vaca Díez</h2>
-                <p>Sistema Integrado de Gestión Institucional | Riberalta - Beni</p>
+                <h2>[NOMBRE DE LA INSTITUCIÓN]</h2>
+                <p>Sistema Integrado de Gestión Institucional | [Ciudad] - [País]</p>
                 <p style="font-weight: bold; color: #0284c7;">COMPROBANTE OFICIAL DE COBRO EN CAJA</p>
             </div>
             <div class="badge-folio">
-                RECIBO #{{ pago.id }}
+                RECIBO #{{ pago_base.id }}
             </div>
         </div>
 
@@ -62,7 +62,7 @@
             </div>
             <div>
                 <span class="label">Fecha y Hora de Recaudación</span>
-                <span class="valor">{{ pago.fecha_pago.strftime('%d/%m/%Y %H:%M') if pago.fecha_pago else now().strftime('%d/%m/%Y %H:%M') }}</span>
+                <span class="valor">{{ pago_base.fecha_pago.strftime('%d/%m/%Y %H:%M') if pago_base.fecha_pago else 'No registrada' }}</span>
                 
                 <span class="label" style="margin-top: 8px;">Turno de Recaudación (Histórico Inmutable)</span>
                 <div style="margin-top: 2px;">
@@ -71,12 +71,12 @@
                     {% elif es_manana %}
                         <span class="turno-badge turno-manana">🌅 TURNO MAÑANA</span>
                     {% else %}
-                        <span class="turno-badge" style="background:#f1f5f9; color:#475569;">{{ pago.turno_responsable or 'Caja Central' }}</span>
+                        <span class="turno-badge" style="background:#f1f5f9; color:#475569;">{{ pago_base.turno_responsable or 'Caja Central' }}</span>
                     {% endif %}
                 </div>
 
                 <span class="label" style="margin-top: 8px;">Método de Pago</span>
-                <span class="valor">{{ pago.metodo_pago or 'Efectivo' }}</span>
+                <span class="valor">{{ pago_base.metodo_pago or 'Efectivo' }}</span>
             </div>
         </div>
 
@@ -90,6 +90,8 @@
                 </tr>
             </thead>
             <tbody>
+                {# ⭐ BUCLE PARA MOSTRAR TODOS LOS MESES PAGADOS EN ESTA TRANSACCIÓN #}
+                {% for pago in pagos %}
                 <tr>
                     <td>
                         <strong>{{ pago.tipo_concepto or 'Pensión' }}</strong>
@@ -109,12 +111,13 @@
                     </td>
                     <td style="text-align: right; font-weight: bold; font-size: 14px;">Bs. {{ "%.2f"|format(pago.monto_pagado or 0) }}</td>
                 </tr>
+                {% endfor %}
             </tbody>
         </table>
 
         <div class="total-box">
             <span>TOTAL PERCIBIDO EN ESTA OPERACIÓN:</span>
-            <span style="color: #059669; font-size: 18px;">Bs. {{ "%.2f"|format(pago.monto_pagado or 0) }}</span>
+            <span style="color: #059669; font-size: 18px;">Bs. {{ "%.2f"|format(total_general) }}</span>
         </div>
 
         <div class="firmas">
@@ -126,7 +129,7 @@
                     {% elif es_manana %}
                         Caja - Turno Mañana
                     {% else %}
-                        Caja - {{ pago.turno_responsable or 'Ventanilla' }}
+                        Caja - {{ pago_base.turno_responsable or 'Ventanilla' }}
                     {% endif %}
                 </div>
             </div>

@@ -4,13 +4,13 @@
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Faltas y Licencias</h2>
-        <a href="{{ url_for('faltas.nueva_falta') }}" class="btn btn-danger">
+        <a href="{{ url_for('faltas.nueva_falta') }}" class="btn btn-danger shadow-sm">
             <i class="bi bi-plus-circle me-1"></i>Registrar Falta
         </a>
     </div>
 
     <!-- Filtros -->
-    <div class="card mb-4">
+    <div class="card mb-4 shadow-sm border-0">
         <div class="card-body">
             <form method="GET" class="row g-2">
                 <div class="col-md-3">
@@ -33,10 +33,10 @@
                 <div class="col-md-3">
                     <select name="estado" class="form-select" onchange="this.form.submit()">
                         <option value="Todos">-- Todos los estados --</option>
-                        <option value="Pendiente" {% if estado_actual == 'Pendiente' %}selected{% endif %}>Pendiente</option>
+                        <option value="Injustificada" {% if estado_actual == 'Injustificada' %}selected{% endif %}>Injustificada</option>
                         <option value="Justificada" {% if estado_actual == 'Justificada' %}selected{% endif %}>Justificada</option>
-                        <option value="Aprobada" {% if estado_actual == 'Aprobada' %}selected{% endif %}>Aprobada</option>
-                        <option value="Rechazada" {% if estado_actual == 'Rechazada' %}selected{% endif %}>Rechazada</option>
+                        <option value="Licencia Médica" {% if estado_actual == 'Licencia Médica' %}selected{% endif %}>Licencia Médica</option>
+                        <option value="Permiso" {% if estado_actual == 'Permiso' %}selected{% endif %}>Permiso</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -46,60 +46,59 @@
         </div>
     </div>
 
-    <!-- Tabla -->
-    <div class="card">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="bi bi-list-ul text-primary me-2"></i>Historial de Faltas</h5>
-            <span class="badge bg-primary">{{ pagination.total }} registros</span>
+    <!-- Tabla Limpia y Optimizada -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-list-ul text-primary me-2"></i>Historial de Faltas</h5>
+            <span class="badge bg-primary fs-6">{{ pagination.total }} registros</span>
         </div>
         <div class="card-body p-0">
             {% if faltas %}
             <div class="table-responsive">
-                <table class="table table-hover table-bordered align-middle mb-0">
+                <table class="table table-hover align-middle mb-0">
                     <thead class="table-dark">
                         <tr>
-                            <th>Fecha</th>
+                            <th class="ps-3">Fecha</th>
                             <th>Estudiante</th>
                             <th>Tipo</th>
-                            <th>Observaciones</th>
+                            <th>Observaciones / Documento</th>
                             <th>Estado</th>
-                            <th class="text-center">Acciones</th>
+                            <th class="text-center pe-3">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for falta in faltas %}
                         <tr>
-                            <td>{{ falta.fecha.strftime('%d/%m/%Y') }}</td>
+                            <td class="ps-3">{{ falta.fecha.strftime('%d/%m/%Y') }}</td>
                             <td><strong>{{ falta.nombre_estudiante }}</strong></td>
-                            <td>{{ falta.tipo_falta }}</td>
-                            <td><small>{{ falta.observaciones or '-' }}</small></td>
                             <td>
-                                {% if falta.estado == 'Pendiente' %}
-                                <span class="badge bg-warning text-dark">{{ falta.estado }}</span>
-                                {% elif falta.estado == 'Justificada' %}
-                                <span class="badge bg-success">{{ falta.estado }}</span>
-                                {% elif falta.estado == 'Rechazada' %}
-                                <span class="badge bg-danger">{{ falta.estado }}</span>
-                                {% else %}
-                                <span class="badge bg-info text-dark">{{ falta.estado }}</span>
+                                <span class="badge bg-light text-dark border">{{ falta.tipo_falta }}</span>
+                            </td>
+                            <td>
+                                <small class="text-muted d-block">{{ falta.observaciones or '-' }}</small>
+                                {% if falta.archivo_adjunto %}
+                                <a href="{{ url_for('static', filename='uploads/faltas/' + falta.archivo_adjunto) }}" target="_blank" class="badge bg-info text-dark text-decoration-none mt-1">
+                                    <i class="bi bi-paperclip me-1"></i>Ver Adjunto
+                                </a>
                                 {% endif %}
                             </td>
-                            <td class="text-center">
-                                <div class="btn-group btn-group-sm">
-                                    {% if falta.estado == 'Pendiente' %}
-                                    <form method="POST" action="{{ url_for('faltas.actualizar_estado', id=falta.id) }}" class="d-inline">
-                                        <button type="submit" name="accion" value="justificar" class="btn btn-success" title="Justificar">
-                                            <i class="bi bi-check-circle"></i>
-                                        </button>
-                                    </form>
-                                    <form method="POST" action="{{ url_for('faltas.actualizar_estado', id=falta.id) }}" class="d-inline">
-                                        <button type="submit" name="accion" value="rechazar" class="btn btn-warning" title="Rechazar">
-                                            <i class="bi bi-x-circle"></i>
-                                        </button>
-                                    </form>
-                                    {% endif %}
-                                    <form method="POST" action="{{ url_for('faltas.eliminar_falta', id=falta.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar esta falta?');">
-                                        <button type="submit" class="btn btn-danger" title="Eliminar">
+                            <td>
+                                {% if falta.estado == 'Justificada' %}
+                                <span class="badge bg-success px-2 py-1">{{ falta.estado }}</span>
+                                {% else %}
+                                <span class="badge bg-danger px-2 py-1">{{ falta.estado }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center pe-3">
+                                <div class="d-flex justify-content-center gap-1">
+                                    <!-- Botón Justificar / Reformular (Abre el formulario completo original) -->
+                                    <a href="{{ url_for('faltas.editar_falta', id=falta.id) }}" class="btn btn-sm btn-outline-primary" title="Justificar o Reformular con Formulario Completo">
+                                        <i class="bi bi-pencil-square"></i> Justificar
+                                    </a>
+
+                                    <!-- Botón Eliminar -->
+                                    <form method="POST" action="{{ url_for('faltas.eliminar_falta', id=falta.id) }}" class="d-inline" onsubmit="return confirm('¿Está seguro de eliminar permanentemente este registro?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar registro">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </form>

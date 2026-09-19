@@ -392,6 +392,7 @@ def reporte_deudores():
             curso_nom = est.curso or "Sin Curso Asignado"
             deudores_por_curso[curso_nom]["subtotal"] += deuda_estudiante
             deudores_por_curso[curso_nom]["alumnos"].append({
+                "id": est.id,  # <-- ¡AQUÍ ESTÁ LA MAGIA QUE CONECTA EL BOTÓN!
                 "estudiante": f"{est.apellidos}, {est.nombres}",
                 "ci": est.ci or "S/N",
                 "pension": pension_base,

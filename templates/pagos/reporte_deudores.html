@@ -69,8 +69,8 @@
             <button onclick="window.print();" class="btn btn-outline-secondary">
                 <i class="bi bi-printer me-1"></i> Imprimir Todos los Cursos
             </button>
-            <a href="{{ url_for('pagos.index') }}" class="btn btn-primary">
-                <i class="bi bi-cash-stack me-1"></i> Ir a Pagos
+            <a href="/estudiantes/" class="btn btn-primary">
+                <i class="bi bi-people-fill me-1"></i> Ir al Cárdex General
             </a>
         </div>
     </div>
@@ -148,6 +148,8 @@
                             <th class="text-center">Meses Mora</th>
                             <th class="text-end">Monto Adeudado</th>
                             <th class="pe-3">Detalle de Meses</th>
+                            <!-- Nueva columna para la acción de cobrar -->
+                            <th class="text-center d-print-none">Acción</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -159,6 +161,20 @@
                             <td class="text-center"><span class="badge bg-warning text-dark">{{ r.cant_meses }}</span></td>
                             <td class="text-end fw-bold text-danger">Bs. {{ "{:,.2f}".format(r.deuda) }}</td>
                             <td class="pe-3 small text-muted">{{ r.detalle_meses }}</td>
+                            
+                            <!-- Botón interactivo de cobro blindado contra errores -->
+                            <td class="text-center d-print-none">
+                                {% set est_id = r.get('estudiante_id') or r.get('id') or r.get('id_estudiante') %}
+                                {% if est_id %}
+                                    <a href="{{ url_for('estudiantes.pagar_estudiante', id=est_id) }}" class="btn btn-sm btn-success shadow-sm" title="Ir a Tarjetas de Pago">
+                                        <i class="bi bi-cash-coin me-1"></i>Cobrar
+                                    </a>
+                                {% else %}
+                                    <a href="/estudiantes/" class="btn btn-sm btn-warning shadow-sm" title="El ID no se cargó en el reporte. Búscalo en el cárdex.">
+                                        <i class="bi bi-search me-1"></i>Buscar
+                                    </a>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -167,6 +183,7 @@
                             <td colspan="4" class="text-end ps-3">Total Deuda {{ curso|upper }}:</td>
                             <td class="text-end text-danger">Bs. {{ "{:,.2f}".format(data.subtotal) }}</td>
                             <td></td>
+                            <td class="d-print-none"></td>
                         </tr>
                     </tfoot>
                 </table>
