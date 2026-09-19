@@ -2,20 +2,21 @@
 {% if session.get('rol') == 'superadmin' %}{% block title %}{{ 'Editar' if gasto else 'Nuevo' }} Gasto{% endblock %}{% endif %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-{% if session.get('rol') == 'superadmin' %}    <h2><i class="bi bi-receipt-cutoff me-2"></i>{{ 'Editar' if gasto else 'Nuevo' }} Gasto</h2>{% endif %}
+    {% if session.get('rol') == 'superadmin' %}<h2><i class="bi bi-receipt-cutoff me-2"></i>{{ 'Editar' if gasto else 'Nuevo' }} Gasto</h2>{% endif %}
     <a href="{{ url_for('gastos.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Volver</a>
 </div>
 
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <form method="POST" class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">Datos del Gasto</h5>
+        <!-- AGREGADO: enctype="multipart/form-data" obligatorio para subir archivos -->
+        <form method="POST" enctype="multipart/form-data" class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white py-3">
+                <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Datos del Gasto y Comprobante</h5>
             </div>
-            <div class="card-body">
+            <div class="card-body p-4">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Categoría <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold">Categoría <span class="text-danger">*</span></label>
                         <select name="categoria" class="form-select" required>
                             <option value="">Seleccionar...</option>
                             {% for cat in categorias %}
@@ -24,33 +25,47 @@
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Fecha <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold">Fecha <span class="text-danger">*</span></label>
                         <input type="date" name="fecha" class="form-control" 
                                value="{{ gasto.fecha.strftime('%Y-%m-%d') if gasto else '' }}" required>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Descripción <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold">Descripción <span class="text-danger">*</span></label>
                         <textarea name="descripcion" class="form-control" rows="3" required>{{ gasto.descripcion if gasto else '' }}</textarea>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Monto (Bs.) <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold">Monto (Bs.) <span class="text-danger">*</span></label>
                         <input type="number" step="0.01" name="monto" class="form-control" 
                                value="{{ gasto.monto if gasto else '' }}" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Proveedor</label>
+                        <label class="form-label fw-semibold">Proveedor</label>
                         <input type="text" name="proveedor" class="form-control" 
                                value="{{ gasto.proveedor if gasto else '' }}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Responsable</label>
+                        <label class="form-label fw-semibold">Responsable</label>
                         <input type="text" name="responsable" class="form-control" 
                                value="{{ gasto.responsable if gasto else '' }}">
                     </div>
+
+                    <!-- NUEVO CAMPO PARA ADJUNTAR ARCHIVO (Factura o Recibo) -->
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Comprobante / Factura (Opcional)</label>
+                        <input type="file" name="archivo" class="form-control" accept=".pdf,image/*">
+                        <div class="form-text text-muted small">Sube una imagen o documento PDF como respaldo.</div>
+                        {% if gasto and gasto.archivo %}
+                        <div class="mt-1">
+                            <a href="{{ url_for('static', filename='uploads/gastos/' + gasto.archivo) }}" target="_blank" class="small text-info text-decoration-none">
+                                <i class="bi bi-paperclip me-1"></i>Ver archivo adjunto actual
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-            <div class="card-footer text-end">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Guardar Gasto</button>
+            <div class="card-footer bg-light py-3 text-end">
+                <button type="submit" class="btn btn-primary px-4"><i class="bi bi-save me-1"></i>Guardar Gasto</button>
             </div>
         </form>
     </div>

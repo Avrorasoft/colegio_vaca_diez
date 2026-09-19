@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
 # Archivo: routes/faltas.py
-# Proyecto: Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez
+# Proyecto: Sistema de Gestión Escolar
 # Desarrollado por: Avrora Soft - Vibola LLC
-# Descripción: Blueprint para gestión de Faltas y Licencias (SIN WhatsApp)
-#              ⭐ FASE B: Sin N+1 (carga de nombres en 1 consulta) y con paginación
+# Descripción: Blueprint para gestión de Faltas y Licencias
+#             ⭐ FASE B: Sin N+1 (carga de nombres en 1 consulta) y con paginación
 # ==============================================================================
 
 import os
@@ -59,11 +59,11 @@ def lista_faltas():
     cursos = [c[0] for c in cursos]
 
     return render_template('faltas/lista.html', faltas=faltas, cursos=cursos,
-                          curso_actual=curso_filtro, tipo_actual=tipo_filtro,
-                          estado_actual=estado_filtro, pagination=pagination)
+                         curso_actual=curso_filtro, tipo_actual=tipo_filtro,
+                         estado_actual=estado_filtro, pagination=pagination)
 
 # =========================================================================
-# REGISTRAR NUEVA FALTA / LICENCIA
+# REGISTRAR NUEVA FALTA / LICENCIA + NOTIFICACIÓN AUTOMÁTICA
 # =========================================================================
 @faltas_bp.route('/nuevo', methods=['GET', 'POST'])
 def nueva_falta():
@@ -93,45 +93,49 @@ def nueva_falta():
                 fecha=fecha,
                 tipo_falta=tipo_falta,
                 observaciones=observaciones,
-                estado='Pendiente',
+                estado=tipo_falta,
                 archivo_adjunto=archivo_nombre
             )
             db.session.add(nueva)
             db.session.commit()
 
-            padre = Padre.query.filter_by(estudiante_id=estudiante_id).first()
-            if padre:
-                nombre_tutor = padre.nombres or "Padre de Familia"
-                telefono = padre.telefono1 or padre.telefono2 or "Sin teléfono"
-                nombre_estudiante = f"{est.nombres} {est.apellidos}"
+            # ⭐ ENVÍO AUTOMÁTICO AL CHAT DEL PADRE DE FAMILIA
+            try:
+                padre = Padre.query.filter_by(estudiante_id=estudiante_id).first()
+                if padre:
+                    nombre_tutor = padre.nombres or "Padre de Familia"
+                    telefono = padre.telefono1 or padre.telefono2 or "Sin teléfono"
+                    nombre_estudiante = f"{est.nombres} {est.apellidos}"
 
-                contenido = (
-                    f"COMUNICADO DE FALTA - COLEGIO DR. ANTONIO VACA DÍEZ\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"Estimado/a Sr./Sra. {nombre_tutor}:\n\n"
-                    f"Le informamos que {nombre_estudiante} registró una {tipo_falta} "
-                    f"el día {fecha.strftime('%d/%m/%Y')}.\n\n"
-                    f"Observaciones: {observaciones or 'Ninguna'}\n\n"
-                    f"Atentamente,\nLA DIRECCIÓN DEL COLEGIO"
-                )
+                    contenido = (
+                        f"COMUNICADO DE FALTA - INSTITUCIÓN EDUCATIVA\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"Estimado/a Sr./Sra. {nombre_tutor}:\n\n"
+                        f"Le informamos que {nombre_estudiante} registró una {tipo_falta} "
+                        f"el día {fecha.strftime('%d/%m/%Y')}.\n\n"
+                        f"Observaciones: {observaciones or 'Ninguna'}\n\n"
+                        f"Atentamente,\nLA DIRECCIÓN"
+                    )
 
-                mensaje_interno = Mensaje(
-                    destinatario=nombre_tutor,
-                    estudiante_id=estudiante_id,
-                    telefono=telefono,
-                    tipo_mensaje=f'Falta {tipo_falta}',
-                    contenido=contenido,
-                    remitente='Colegio'
-                )
-                db.session.add(mensaje_interno)
-                db.session.commit()
+                    mensaje_interno = Mensaje(
+                        destinatario=nombre_tutor,
+                        estudiante_id=estudiante_id,
+                        telefono=telefono,
+                        tipo_mensaje=f'Falta {tipo_falta}',
+                        contenido=contenido,
+                        remitente='Institución'
+                    )
+                    db.session.add(mensaje_interno)
+                    db.session.commit()
+            except Exception as msg_err:
+                print(f"⚠️ Aviso: No se pudo generar el mensaje interno para el padre: {msg_err}")
 
-            flash('✅ Falta/Licencia registrada y comunicada internamente.', 'success')
+            flash('✅ Falta registrada y comunicada automáticamente al chat de los padres.', 'success')
             return redirect(url_for('faltas.lista_faltas'))
 
         except Exception as e:
             db.session.rollback()
-            print(f"Error: {e}")
+            print(f"❌ Error crítico al registrar falta: {e}")
             flash(f'❌ Error al registrar: {str(e)}', 'danger')
 
     curso_filtro = request.args.get('curso', '')
@@ -143,54 +147,88 @@ def nueva_falta():
     cursos = [c[0] for c in cursos]
 
     return render_template('faltas/form.html', estudiantes=estudiantes, cursos=cursos,
-                          curso_actual=curso_filtro, today=datetime.now().strftime('%Y-%m-%d'))
+                         curso_actual=curso_filtro, today=datetime.now().strftime('%Y-%m-%d'))
 
 # =========================================================================
-# ACTUALIZAR ESTADO (JUSTIFICAR, APROBAR, RECHAZAR)
+# EDITAR / JUSTIFICAR FALTA + ESTADO "JUSTIFICADA" + NOTIFICACIÓN AUTOMÁTICA
 # =========================================================================
-@faltas_bp.route('/actualizar_estado/<int:id>', methods=['POST'])
-def actualizar_estado(id):
+@faltas_bp.route('/editar/<int:id>', methods=['GET', 'POST'])
+def editar_falta(id):
     falta = Falta.query.get_or_404(id)
-    accion = request.form.get('accion', '')
+    estudiante_actual = Estudiante.query.get(falta.sujeto_id)
 
-    try:
-        if accion == 'justificar':
-            falta.estado = 'Justificada'
-            falta.tipo_falta = 'Justificada'
-            flash('✅ Falta justificada correctamente.', 'success')
-        elif accion == 'aprobar':
-            falta.estado = 'Aprobada'
-            flash('✅ Falta aprobada correctamente.', 'success')
-        elif accion == 'rechazar':
-            falta.estado = 'Rechazada'
-            flash('⚠️ Falta rechazada.', 'warning')
-        elif accion == 'pendiente':
-            falta.estado = 'Pendiente'
-            flash('ℹ️ Falta marcada como pendiente.', 'info')
+    if request.method == 'POST':
+        try:
+            falta.fecha = datetime.strptime(request.form['fecha'], '%Y-%m-%d').date()
+            falta.tipo_falta = request.form['tipo_falta']
+            
+            # ⭐ REGLA: Al justificar y guardar, el estado se fija obligatoriamente como "Justificada"
+            falta.estado = 'Justificada'  
+            falta.observaciones = request.form.get('observaciones', '')
 
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        flash(f'❌ Error: {str(e)}', 'danger')
+            # Procesar nuevo archivo si se adjuntó
+            if 'archivo' in request.files:
+                archivo = request.files['archivo']
+                if archivo and archivo.filename != '':
+                    filename = secure_filename(f"falta_{falta.sujeto_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{archivo.filename}")
+                    upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'faltas')
+                    os.makedirs(upload_folder, exist_ok=True)
+                    archivo.save(os.path.join(upload_folder, filename))
+                    falta.archivo_adjunto = filename
 
-    return redirect(url_for('faltas.lista_faltas'))
+            db.session.commit()
 
-# =========================================================================
-# JUSTIFICAR CON OBSERVACIÓN
-# =========================================================================
-@faltas_bp.route('/justificar/<int:id>', methods=['POST'])
-def justificar_falta(id):
-    falta = Falta.query.get_or_404(id)
-    observacion = request.form.get('observacion', '').strip()
+            # ⭐ ENVÍO AUTOMÁTICO DE JUSTIFICACIÓN AL CHAT DE LOS PADRES
+            try:
+                if estudiante_actual:
+                    padre = Padre.query.filter_by(estudiante_id=estudiante_actual.id).first()
+                    if padre:
+                        nombre_tutor = padre.nombres or "Padre de Familia"
+                        telefono = padre.telefono1 or padre.telefono2 or "Sin teléfono"
+                        nombre_estudiante = f"{estudiante_actual.nombres} {estudiante_actual.apellidos}"
 
-    falta.estado = 'Justificada'
-    falta.tipo_falta = 'Justificada'
-    if observacion:
-        falta.observaciones = observacion
+                        contenido = (
+                            f"ACTUALIZACIÓN DE JUSTIFICACIÓN - INSTITUCIÓN EDUCATIVA\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"Estimado/a Sr./Sra. {nombre_tutor}:\n\n"
+                            f"Le informamos que la falta de {nombre_estudiante} "
+                            f"del día {falta.fecha.strftime('%d/%m/%Y')} ha sido formalmente *JUSTIFICADA*.\n\n"
+                            f"Detalle / Observaciones: {falta.observaciones or 'Ninguna'}\n\n"
+                            f"Atentamente,\nLA DIRECCIÓN"
+                        )
 
-    db.session.commit()
-    flash('✅ Falta justificada correctamente.', 'success')
-    return redirect(url_for('faltas.lista_faltas'))
+                        mensaje_interno = Mensaje(
+                            destinatario=nombre_tutor,
+                            estudiante_id=estudiante_actual.id,
+                            telefono=telefono,
+                            tipo_mensaje='Falta Justificada',
+                            contenido=contenido,
+                            remitente='Institución'
+                        )
+                        db.session.add(mensaje_interno)
+                        db.session.commit()
+            except Exception as msg_err:
+                print(f"⚠️ Aviso: No se pudo generar el mensaje interno de justificación: {msg_err}")
+
+            flash('✅ Falta justificada correctamente y comunicada al chat de los padres.', 'success')
+            return redirect(url_for('faltas.lista_faltas'))
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error crítico al actualizar falta: {e}")
+            flash(f'❌ Error al actualizar: {str(e)}', 'danger')
+
+    cursos = db.session.query(Estudiante.curso).filter_by(estado='Activo').distinct().all()
+    cursos = [c[0] for c in cursos]
+    
+    estudiantes = []
+    if estudiante_actual and estudiante_actual.curso:
+        estudiantes = Estudiante.query.filter_by(curso=estudiante_actual.curso, estado='Activo').order_by(Estudiante.apellidos).all()
+
+    return render_template('faltas/form.html', falta=falta, estudiante_actual=estudiante_actual,
+                         estudiantes=estudiantes, cursos=cursos, 
+                         curso_actual=estudiante_actual.curso if estudiante_actual else '',
+                         today=datetime.now().strftime('%Y-%m-%d'))
 
 # =========================================================================
 # ELIMINAR FALTA
@@ -240,6 +278,6 @@ def reporte_sujeto(tipo_sujeto, sujeto_id):
             sujeto_nombre = f"{sujeto.apellidos}, {sujeto.nombres}"
 
     return render_template('faltas/reporte_sujeto.html',
-                          faltas=faltas,
-                          sujeto_nombre=sujeto_nombre,
-                          tipo_sujeto=tipo_sujeto)
+                         faltas=faltas,
+                         sujeto_nombre=sujeto_nombre,
+                         tipo_sujeto=tipo_sujeto)

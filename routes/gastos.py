@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+import os
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 from models import db, Gasto
 from datetime import datetime
+from werkzeug.utils import secure_filename
 
 gastos_bp = Blueprint('gastos', __name__, template_folder='templates/gastos')
 
@@ -67,6 +69,17 @@ def nuevo():
       if metodo_pago not in ['Efectivo', 'Bancario']:
         metodo_pago = 'Efectivo'
 
+      # Procesamiento de archivo adjunto (Comprobante / Factura)
+      archivo_nombre = None
+      if 'archivo' in request.files:
+        archivo = request.files['archivo']
+        if archivo and archivo.filename != '':
+          filename = secure_filename(f"gasto_{datetime.now().strftime('%Y%m%d%H%M%S')}_{archivo.filename}")
+          upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'gastos')
+          os.makedirs(upload_folder, exist_ok=True)
+          archivo.save(os.path.join(upload_folder, filename))
+          archivo_nombre = filename
+
       nuevo_gasto = Gasto(
         categoria=request.form['categoria'],
         descripcion=request.form['descripcion'],
@@ -74,13 +87,14 @@ def nuevo():
         fecha=datetime.strptime(request.form['fecha'], '%Y-%m-%d').date(),
         proveedor=request.form.get('proveedor', ''),
         responsable=request.form.get('responsable', ''),
-        metodo_pago=metodo_pago
+        metodo_pago=metodo_pago,
+        archivo=archivo_nombre  # Se guarda el nombre del archivo en la BD
       )
 
       db.session.add(nuevo_gasto)
       db.session.commit()
 
-      flash('✅ Gasto registrado exitosamente.', 'success')
+      flash('✅ Gasto registrado exitosamente con su comprobante.', 'success')
       return redirect(url_for('gastos.index'))
 
     except Exception as e:
@@ -113,9 +127,19 @@ def editar(id):
       gasto.responsable = request.form.get('responsable', '')
       gasto.metodo_pago = metodo_pago
 
+      # Actualizar archivo adjunto si se seleccionó uno nuevo
+      if 'archivo' in request.files:
+        archivo = request.files['archivo']
+        if archivo and archivo.filename != '':
+          filename = secure_filename(f"gasto_{id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{archivo.filename}")
+          upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'gastos')
+          os.makedirs(upload_folder, exist_ok=True)
+          archivo.save(os.path.join(upload_folder, filename))
+          gasto.archivo = filename
+
       db.session.commit()
 
-      flash('✅ Gasto actualizado.', 'success')
+      flash('✅ Gasto actualizado correctamente.', 'success')
       return redirect(url_for('gastos.index'))
 
     except Exception as e:

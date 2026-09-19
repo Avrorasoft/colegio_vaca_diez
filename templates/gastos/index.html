@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Gestión de Gastos - Colegio Dr. Antonio Vaca Díez{% endblock %}
+{% block title %}Gestión de Gastos{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="text-dark"><i class="bi bi-receipt me-2"></i>Gestión de Gastos</h2>
@@ -91,27 +91,41 @@
                         <td class="text-dark"><strong>Bs. {{ "%.2f"|format(g.monto) }}</strong></td>
                         <td class="text-end">
                             <div class="btn-group btn-group-sm">
+                                <!-- Botón para ver comprobante impreso -->
                                 <a href="{{ url_for('gastos.comprobante_gasto', gasto_id=g.id) }}" class="btn btn-outline-secondary" title="Imprimir Comprobante" target="_blank"><i class="bi bi-printer"></i></a>
+                                
+                                <!-- Ícono directo para ver el archivo adjunto -->
+                                {% if g.archivo %}
+                                <a href="{{ url_for('static', filename='uploads/gastos/' + g.archivo) }}" class="btn btn-outline-info" title="Ver Comprobante Adjunto" target="_blank">
+                                    <i class="bi bi-paperclip"></i>
+                                </a>
+                                {% endif %}
+
                                 {% set es_super = session.get('es_superadmin') or session.get('rol') == 'superadmin' %}
                                 {% if es_super %}
-{% if session.get('rol') == 'superadmin' %}                                <a href="{{ url_for('gastos.editar', id=g.id) }}" class="btn btn-outline-warning" title="Editar Gasto"><i class="bi bi-pencil"></i></a>{% endif %}
-{% if session.get('rol') == 'superadmin' %}                                <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delGasto{{ g.id }}" title="Eliminar Gasto"><i class="bi bi-trash"></i></button>{% endif %}
+                                    {% if session.get('rol') == 'superadmin' %}
+                                    <a href="{{ url_for('gastos.editar', id=g.id) }}" class="btn btn-outline-warning" title="Editar Gasto"><i class="bi bi-pencil"></i></a>
+                                    <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delGasto{{ g.id }}" title="Eliminar Gasto"><i class="bi bi-trash"></i></button>
+                                    {% endif %}
                                 {% endif %}
                             </div>
+                            
                             {% if es_super %}
                             <div class="modal fade" id="delGasto{{ g.id }}">
                                 <div class="modal-dialog modal-dialog-centered">
                                     <div class="modal-content">
                                         <div class="modal-header bg-danger text-white">
-{% if session.get('rol') == 'superadmin' %}                                            <h5 class="modal-title text-white">Eliminar Gasto</h5>{% endif %}
+                                            {% if session.get('rol') == 'superadmin' %}<h5 class="modal-title text-white">Eliminar Gasto</h5>{% endif %}
                                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                         </div>
-{% if session.get('rol') == 'superadmin' %}                                        <div class="modal-body text-dark">¿Eliminar el gasto de <strong>{{ g.categoria }}</strong> por Bs. {{ "%.2f"|format(g.monto) }}?</div>{% endif %}
+                                        {% if session.get('rol') == 'superadmin' %}<div class="modal-body text-dark">¿Eliminar el gasto de <strong>{{ g.categoria }}</strong> por Bs. {{ "%.2f"|format(g.monto) }}?</div>{% endif %}
                                         <div class="modal-footer">
                                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-{% if session.get('rol') == 'superadmin' %}                                            <form action="{{ url_for('gastos.eliminar', id=g.id) }}" method="POST">{% endif %}
-{% if session.get('rol') == 'superadmin' %}                                                <button type="submit" class="btn btn-danger">Eliminar</button>{% endif %}
+                                            {% if session.get('rol') == 'superadmin' %}
+                                            <form action="{{ url_for('gastos.eliminar', id=g.id) }}" method="POST">
+                                                <button type="submit" class="btn btn-danger">Eliminar</button>
                                             </form>
+                                            {% endif %}
                                         </div>
                                     </div>
                                 </div>

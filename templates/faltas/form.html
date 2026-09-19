@@ -1,17 +1,37 @@
 {% extends "base.html" %}
 
-{% block title %}Registrar Falta - Colegio Dr. Antonio Vaca Díez{% endblock %}
+{% block title %}{% if falta %}Justificar / Editar Falta{% else %}Registrar Falta{% endif %}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <div class="card p-4" style="max-width: 600px; margin: auto;">
-        <h3 class="mb-4"><i class="bi bi-pencil-square"></i> Registrar Falta o Licencia</h3>
+    <div class="card p-4 shadow-sm border-0" style="max-width: 600px; margin: auto;">
+        <h3 class="mb-4 text-dark fw-bold">
+            <i class="bi bi-pencil-square text-primary me-2"></i>
+            {% if falta %}Justificar o Reformular Falta{% else %}Registrar Falta o Licencia{% endif %}
+        </h3>
         
         <form method="POST" enctype="multipart/form-data">
             
-            <!-- FILTRO POR CURSO -->
+            {% if falta and estudiante_actual %}
+            <!-- MODO EDICIÓN / JUSTIFICACIÓN: Muestra el estudiante fijo sin necesidad de buscarlo -->
+            <div class="mb-3 alert alert-light border">
+                <label class="form-label text-muted small text-uppercase fw-bold d-block mb-1">Estudiante Seleccionado:</label>
+                <div class="fs-5 fw-bold text-dark">
+                    <i class="bi bi-person-badge text-primary me-1"></i>
+                    {{ estudiante_actual.apellidos }}, {{ estudiante_actual.nombres }}
+                </div>
+                <div class="text-muted small mt-1">
+                    <span class="badge bg-secondary">{{ estudiante_actual.curso }}</span>
+                    {% if estudiante_actual.rude %} &bull; RUDE: {{ estudiante_actual.rude }}{% endif %}
+                </div>
+                <!-- Campo oculto para mantener el ID del estudiante al enviar el formulario -->
+                <input type="hidden" name="estudiante_id" value="{{ estudiante_actual.id }}">
+            </div>
+            
+            {% else %}
+            <!-- MODO NUEVO: Filtros de curso y selector de estudiantes -->
             <div class="mb-3">
-                <label class="form-label">Curso</label>
+                <label class="form-label fw-semibold">Curso</label>
                 <select name="curso_filtro" class="form-select" onchange="window.location.href='{{ url_for('faltas.nueva_falta') }}?curso=' + this.value">
                     <option value="">Seleccione un curso...</option>
                     {% for c in cursos %}
@@ -20,9 +40,8 @@
                 </select>
             </div>
             
-            <!-- ESTUDIANTE -->
             <div class="mb-3">
-                <label class="form-label">Estudiante *</label>
+                <label class="form-label fw-semibold">Estudiante *</label>
                 <select name="estudiante_id" class="form-select" required>
                     <option value="">Seleccione un estudiante...</option>
                     {% for est in estudiantes %}
@@ -30,44 +49,50 @@
                     {% endfor %}
                 </select>
             </div>
+            {% endif %}
             
             <!-- FECHA -->
             <div class="mb-3">
-                <label class="form-label">Fecha *</label>
-                <input type="date" name="fecha" class="form-control" required value="{{ today }}">
+                <label class="form-label fw-semibold">Fecha *</label>
+                <input type="date" name="fecha" class="form-control" required value="{{ falta.fecha.strftime('%Y-%m-%d') if falta else today }}">
             </div>
             
             <!-- TIPO DE FALTA -->
             <div class="mb-3">
-                <label class="form-label">Tipo de Registro *</label>
+                <label class="form-label fw-semibold">Tipo de Registro *</label>
                 <select name="tipo_falta" class="form-select" required>
-                    <option value="Injustificada">Falta Injustificada</option>
-                    <option value="Justificada">Falta Justificada</option>
-                    <option value="Licencia Médica">Licencia Médica</option>
-                    <option value="Permiso">Permiso Especial</option>
+                    <option value="Injustificada" {% if falta and falta.tipo_falta == 'Injustificada' %}selected{% endif %}>Falta Injustificada</option>
+                    <option value="Justificada" {% if falta and falta.tipo_falta in ['Justificada', 'Aprobada'] %}selected{% endif %}>Falta Justificada</option>
+                    <option value="Licencia Médica" {% if falta and falta.tipo_falta == 'Licencia Médica' %}selected{% endif %}>Licencia Médica</option>
+                    <option value="Permiso" {% if falta and falta.tipo_falta == 'Permiso' %}selected{% endif %}>Permiso Especial</option>
                 </select>
             </div>
             
             <!-- OBSERVACIONES -->
             <div class="mb-3">
-                <label class="form-label">Observaciones</label>
+                <label class="form-label fw-semibold">Observaciones / Motivo de Justificación</label>
                 <textarea name="observaciones" class="form-control" rows="3" 
-                          placeholder="Motivo de la falta o licencia..."></textarea>
+                          placeholder="Motivo de la falta o detalle de la justificación...">{{ falta.observaciones if falta else '' }}</textarea>
             </div>
             
             <!-- ARCHIVO ADJUNTO -->
             <div class="mb-3">
-                <label class="form-label">Adjuntar Comprobante (Opcional)</label>
-                <input type="file" name="archivo" class="form-control" accept=".pdf,.jpg,.png">
+                <label class="form-label fw-semibold">Adjuntar Comprobante / Respaldo (Opcional)</label>
+                <input type="file" name="archivo" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                {% if falta and falta.archivo_adjunto %}
+                <div class="form-text text-info mt-1">
+                    <i class="bi bi-paperclip"></i> Archivo actual registrado: <strong>{{ falta.archivo_adjunto }}</strong> (Si sube uno nuevo, se reemplazará).
+                </div>
+                {% endif %}
             </div>
             
             <!-- BOTONES -->
-            <div class="d-grid gap-2">
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-save"></i> Guardar Registro
+            <div class="d-grid gap-2 mt-4">
+                <button type="submit" class="btn btn-primary shadow-sm">
+                    <i class="bi bi-save me-1"></i> Guardar Cambios
                 </button>
-                <a href="{{ url_for('faltas.lista_faltas') }}" class="btn btn-secondary">
-                    <i class="bi bi-x-circle"></i> Cancelar
+                <a href="{{ url_for('faltas.lista_faltas') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i> Cancelar
                 </a>
             </div>
         </form>
