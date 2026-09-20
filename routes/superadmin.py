@@ -431,6 +431,11 @@ def generar_avr():
         return redirect(url_for('superadmin.boveda'))
 
 
+# -*- coding: utf-8 -*-
+# Asegúrate de tener estas importaciones arriba en tu archivo routes/superadmin.py:
+# from sqlalchemy import create_engine
+# from utils.validador_db import validar_integridad_base_datos
+
 @superadmin_bp.route('/restaurar_avr', methods=['POST'])
 def restaurar_avr():
     if not check_superadmin():
@@ -469,6 +474,7 @@ def restaurar_avr():
 
     temp_avr = None
     dir_extraccion = None
+    temp_db_path = None
 
     try:
         # ⭐ LIBERACIÓN TOTAL Y FORZOSA DE CONEXIONES DE BASE DE DATOS EN WINDOWS
@@ -481,16 +487,49 @@ def restaurar_avr():
         except Exception:
             pass
 
+        # ---------------------------------------------------------------------
+        # CASO 1: SUBIDA DIRECTA DE ARCHIVO .DB
+        # ---------------------------------------------------------------------
         if is_db_file:
             if not db_path:
                 flash('❌ No se pudo determinar la ruta de la base de datos SQLite.', 'danger')
                 return redirect(url_for('superadmin.boveda'))
             
-            archivo.save(db_path)
-            flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) aplicada con éxito.', 'success')
+            # Guardar temporalmente el .db subido para auditar su estructura antes de aplicarlo
+            temp_db_path = os.path.join(
+                tempfile.gettempdir(),
+                f"val_db_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
+            )
+            archivo.save(temp_db_path)
+
+            # 🛑 VALIDACIÓN PROGRAMÁTICA DE ESQUEMA
+            try:
+                engine_externo = create_engine(f"sqlite:///{temp_db_path}")
+                es_valida, mensaje = validar_integridad_base_datos(engine_externo)
+                engine_externo.dispose()
+
+                if not es_valida:
+                    flash(mensaje, 'danger')
+                    if os.path.exists(temp_db_path):
+                        os.remove(temp_db_path)
+                    return redirect(url_for('superadmin.boveda'))
+            except Exception as val_err:
+                if os.path.exists(temp_db_path):
+                    os.remove(temp_db_path)
+                flash(f'❌ Error crítico al validar la estructura de la base de datos: {str(val_err)}', 'danger')
+                return redirect(url_for('superadmin.boveda'))
+
+            # Si pasa la validación, reemplazar la base de datos oficial de forma segura
+            shutil.copyfile(temp_db_path, db_path)
+            if os.path.exists(temp_db_path):
+                os.remove(temp_db_path)
+
+            flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) verificada e integrada con éxito.', 'success')
             return redirect(url_for('superadmin.boveda'))
 
-        # Proceso para archivos .avr
+        # ---------------------------------------------------------------------
+        # CASO 2: PROCESO PARA ARCHIVOS .AVR (RESPALDOS COMPRIMIDOS)
+        # ---------------------------------------------------------------------
         temp_avr = os.path.join(
             tempfile.gettempdir(),
             f"upload_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
@@ -503,7 +542,7 @@ def restaurar_avr():
         )
         os.makedirs(dir_extraccion, exist_ok=True)
 
-        # VALIDACIÓN DE SEGURIDAD: verificar cada archivo del ZIP
+        # VALIDACIÓN DE SEGURIDAD ZIP: verificar cada archivo del ZIP
         with zipfile.ZipFile(temp_avr, 'r') as zipf:
             for miembro in zipf.namelist():
                 if not _es_ruta_segura_zip(miembro, dir_extraccion):
@@ -525,8 +564,21 @@ def restaurar_avr():
                     break
 
             if db_backup_encontrado and db_path:
+                # 🛑 VALIDACIÓN PROGRAMÁTICA DE ESQUEMA PARA LA BD EXTRAÍDA DEL .AVR
+                try:
+                    engine_externo = create_engine(f"sqlite:///{db_backup_encontrado}")
+                    es_valida, mensaje = validar_integridad_base_datos(engine_externo)
+                    engine_externo.dispose()
+
+                    if not es_valida:
+                        flash(mensaje, 'danger')
+                        return redirect(url_for('superadmin.boveda'))
+                except Exception as val_err:
+                    flash(f'❌ Error al auditar la base de datos interna del .avr: {str(val_err)}', 'danger')
+                    return redirect(url_for('superadmin.boveda'))
+
                 shutil.copyfile(db_backup_encontrado, db_path)
-                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada desde .avr.', 'success')
+                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite verificada e integrada desde .avr.', 'success')
 
             elif os.path.exists(sql_file_encontrado) and db_path:
                 db.drop_all()
@@ -593,6 +645,11 @@ def restaurar_avr():
         flash(f'❌ Error crítico durante la restauración: {str(e)}', 'danger')
 
     finally:
+        if temp_db_path and os.path.exists(temp_db_path):
+            try:
+                os.remove(temp_db_path)
+            except Exception:
+                pass
         if temp_avr and os.path.exists(temp_avr):
             try:
                 os.remove(temp_avr)
@@ -605,7 +662,6 @@ def restaurar_avr():
                 pass
 
     return redirect(url_for('superadmin.boveda'))
-
 
 # =========================================================================
 # 3. RESETEO DE FÁBRICA

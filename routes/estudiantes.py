@@ -3,12 +3,11 @@ from decorators import profesor_autorizado_requerido
 """
 ==============================================================================
 Archivo: routes/estudiantes.py
-Proyecto: Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez
+Proyecto: Sistema de Gestión Escolar
 Desarrollado por: Avrora Soft - Vibola LLC
 Descripción: Blueprint para gestión completa de Estudiantes, Pagos, Boletines
        y Recibos. IDENTIFICADOR PRINCIPAL: C.I. (RUDE solo informativo).
-       DIVISIÓN ACADÉMICA: Niveles (Nidito/Primaria/Secundaria) y
-       Turnos (Mañana/Tarde). Caja única para todo el colegio.
+       DIVISIÓN ACADÉMICA: Niveles y Turnos.
 ==============================================================================
 """
 import datetime
@@ -18,7 +17,7 @@ from PIL import Image
 import os
 import io
 from sqlalchemy.orm import joinedload, aliased
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, session, jsonify
 from models import (
   db, Estudiante, Padre, Pago, Calificacion, Materia, Egresado,
   HistorialCalificacion, Mensaje,
@@ -348,57 +347,55 @@ def cambiar_turno(id):
 
 
 # ==============================================================================
-# SUBIDA DE FOTO DEL ESTUDIANTE (NOMBRE DE ARCHIVO = C.I.)
+# SUBIDA DE FOTO DEL ESTUDIANTE (NOMBRE DE ARCHIVO = C.I. - RESPUESTA JSON)
 # ==============================================================================
 
 @estudiantes_bp.route('/subir_foto/<int:id>', methods=['POST'])
 def subir_foto(id):
-  est = Estudiante.query.get_or_404(id)
+    est = Estudiante.query.get_or_404(id)
 
-  if 'foto' not in request.files:
-    flash('No se seleccionó ningún archivo', 'danger')
-    return redirect(url_for('estudiantes.ver_estudiante', id=id))
+    if 'foto' not in request.files:
+        return jsonify({'success': False, 'message': 'No se seleccionó ningún archivo'}), 400
 
-  file = request.files['foto']
+    file = request.files['foto']
 
-  if file.filename == '':
-    flash('No se seleccionó ningún archivo', 'danger')
-    return redirect(url_for('estudiantes.ver_estudiante', id=id))
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No se seleccionó ningún archivo'}), 400
 
-  if file and allowed_file(file.filename):
-    try:
-      filename = secure_filename(file.filename)
-      extension = filename.rsplit('.', 1)[1].lower()
+    if file and allowed_file(file.filename):
+        try:
+            filename = secure_filename(file.filename)
+            extension = filename.rsplit('.', 1)[1].lower()
 
-      # Usar C.I. para el nombre del archivo
-      nuevo_nombre = f"{est.ci}.{extension}"
+            # Usar C.I. para el nombre del archivo
+            nuevo_nombre = f"{est.ci}.{extension}"
 
-      upload_folder = os.path.join(current_app.root_path, 'static', 'uploads', 'estudiantes')
-      os.makedirs(upload_folder, exist_ok=True)
+            upload_folder = os.path.join(current_app.root_path, 'static', 'uploads', 'estudiantes')
+            os.makedirs(upload_folder, exist_ok=True)
 
-      filepath = os.path.join(upload_folder, nuevo_nombre)
+            filepath = os.path.join(upload_folder, nuevo_nombre)
 
-      # Procesar imagen con Pillow de forma segura
-      with Image.open(file.stream) as img:
-        if img.mode in ("RGBA", "P") and extension in ("jpg", "jpeg"):
-          img = img.convert("RGB")
+            # Procesar imagen con Pillow de forma segura
+            with Image.open(file.stream) as img:
+                if img.mode in ("RGBA", "P") and extension in ("jpg", "jpeg"):
+                    img = img.convert("RGB")
 
-        max_size = (800, 800)
-        img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        img.save(filepath, optimize=True, quality=80)
+                max_size = (800, 800)
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                img.save(filepath, optimize=True, quality=80)
 
-      est.foto_path = f"uploads/estudiantes/{nuevo_nombre}"
-      db.session.commit()
+            est.foto_path = f"uploads/estudiantes/{nuevo_nombre}"
+            db.session.commit()
 
-      flash('✅ Foto optimizada y actualizada exitosamente', 'success')
+            # Retornar JSON con la URL exacta para que el JavaScript la actualice al instante
+            url_imagen = url_for('static', filename=est.foto_path)
+            return jsonify({'success': True, 'nueva_url': url_imagen})
 
-    except Exception as e:
-      print(f"ERROR CRÍTICO AL SUBIR FOTO: {str(e)}")
-      flash(f'❌ Error al procesar la imagen: {str(e)}', 'danger')
-  else:
-    flash('❌ Formato no permitido (Verifica que sea JPG, PNG o JPEG)', 'danger')
-
-  return redirect(url_for('estudiantes.ver_estudiante', id=id))
+        except Exception as e:
+            print(f"ERROR CRÍTICO AL SUBIR FOTO: {str(e)}")
+            return jsonify({'success': False, 'message': f'Error al procesar la imagen: {str(e)}'}), 500
+    else:
+        return jsonify({'success': False, 'message': 'Formato no permitido (Verifica que sea JPG, PNG o JPEG)'}), 400
 
 
 # ==============================================================================
