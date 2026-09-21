@@ -102,31 +102,47 @@ def nueva_falta():
             # ⭐ ENVÍO AUTOMÁTICO AL CHAT DEL PADRE DE FAMILIA
             try:
                 padre = Padre.query.filter_by(estudiante_id=estudiante_id).first()
-                if padre:
-                    nombre_tutor = padre.nombres or "Padre de Familia"
-                    telefono = padre.telefono1 or padre.telefono2 or "Sin teléfono"
-                    nombre_estudiante = f"{est.nombres} {est.apellidos}"
+                
+                # Asignar valores por defecto si el estudiante aún no tiene padre registrado
+                nombre_tutor = padre.nombres if padre and padre.nombres else "Padre/Tutor"
+                telefono = (padre.telefono1 or padre.telefono2) if padre else "Sin teléfono"
+                nombre_estudiante = f"{est.nombres} {est.apellidos}"
 
-                    contenido = (
-                        f"COMUNICADO DE FALTA - INSTITUCIÓN EDUCATIVA\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                        f"Estimado/a Sr./Sra. {nombre_tutor}:\n\n"
-                        f"Le informamos que {nombre_estudiante} registró una {tipo_falta} "
-                        f"el día {fecha.strftime('%d/%m/%Y')}.\n\n"
-                        f"Observaciones: {observaciones or 'Ninguna'}\n\n"
-                        f"Atentamente,\nLA DIRECCIÓN"
-                    )
+                # Adaptar la redacción según el tipo de falta para que suene natural
+                fecha_formato = fecha.strftime('%d/%m/%Y')
+                if tipo_falta == 'Injustificada':
+                    accion_texto = f"faltó hoy al colegio {fecha_formato} sin ninguna justificación."
+                elif tipo_falta == 'Justificada':
+                    accion_texto = f"faltó hoy al colegio {fecha_formato} con falta justificada."
+                elif tipo_falta == 'Licencia':
+                    accion_texto = f"tiene licencia aprobada para el día {fecha_formato}."
+                elif tipo_falta == 'Atraso':
+                    accion_texto = f"llegó atrasado al colegio el día {fecha_formato}."
+                else:
+                    accion_texto = f"registró una {tipo_falta} el día {fecha_formato}."
 
-                    mensaje_interno = Mensaje(
-                        destinatario=nombre_tutor,
-                        estudiante_id=estudiante_id,
-                        telefono=telefono,
-                        tipo_mensaje=f'Falta {tipo_falta}',
-                        contenido=contenido,
-                        remitente='Institución'
-                    )
-                    db.session.add(mensaje_interno)
-                    db.session.commit()
+                contenido = (
+                    f"COMUNICADO DE ASISTENCIA - INSTITUCIÓN EDUCATIVA\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"Estimado/a Sr./Sra. {nombre_tutor}:\n\n"
+                    f"Le informamos que {nombre_estudiante}, {accion_texto}\n\n"
+                    f"Observaciones: {observaciones or 'Ninguna'}\n\n"
+                    f"Atentamente,\nLA DIRECCIÓN"
+                )
+
+                mensaje_interno = Mensaje(
+                    destinatario=nombre_tutor,
+                    estudiante_id=estudiante_id,
+                    telefono=telefono,
+                    tipo_mensaje=f'Falta {tipo_falta}',
+                    contenido=contenido,
+                    remitente='Institución'
+                )
+                db.session.add(mensaje_interno)
+                db.session.commit()
+                
+                print(f"✅ Mensaje de falta guardado en BD para: {nombre_estudiante}")
+                
             except Exception as msg_err:
                 print(f"⚠️ Aviso: No se pudo generar el mensaje interno para el padre: {msg_err}")
 
