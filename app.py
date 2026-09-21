@@ -1,6 +1,3 @@
-from utils_backup import realizar_respaldo_db
-realizar_respaldo_db()
-
 # -*- coding: utf-8 -*-
 """
 ==============================================================================
@@ -27,6 +24,7 @@ from werkzeug.utils import secure_filename
 from models import db, Estudiante, ConfiguracionSuperadmin
 from config import Config
 from routes.auth import auth_bp
+from utils_backup import realizar_respaldo_db
 
 # Zona horaria Bolivia (UTC-4)
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
@@ -43,25 +41,9 @@ app.config.from_object(Config)
 db.init_app(app)
 csrf = CSRFProtect(app)
 
-# ==============================================================================
-# BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
-# ==============================================================================
-@app.before_request
-def bloquear_transacciones_sin_turno():
-    path = request.path.lower()
-    # Intercepta cualquier ruta que involucre pagos, cobros o cardex financieros
-    es_financiera = any(term in path for term in ['pago', 'pagar', 'cardex', 'cobro'])
-    
-    if es_financiera and request.method == 'POST':
-        turno_activo = session.get('turno') or session.get('turno_activo')
-        es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
-        
-        if not turno_activo and not es_superadmin:
-            flash('❌ Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
-            try:
-                return redirect(url_for('dashboard.index'))
-            except Exception:
-                return redirect('/')
+# Ejecutar respaldo dentro del contexto de la app para evitar errores de SQLAlchemy
+with app.app_context():
+    realizar_respaldo_db()
 
 def _obtener_clave(clave, valor_por_defecto='N/A'):
     """Función auxiliar segura para recuperar valores de configuración."""
@@ -72,7 +54,25 @@ def _obtener_clave(clave, valor_por_defecto='N/A'):
     except Exception:
         pass
     return os.environ.get(clave.upper(), valor_por_defecto)
-
+# ==============================================================================
+# BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
+# ==============================================================================
+@app.before_request
+def bloquear_transacciones_sin_turno():
+    path = request.path.lower()
+    es_financiera = any(term in path for term in ['pago', 'pagar', 'cardex', 'cobro'])
+    
+    # Solo bloquea acciones de escritura/cobro (POST). Permite navegar y ver (GET).
+    if es_financiera and request.method == 'POST':
+        turno_activo = session.get('turno') or session.get('turno_activo')
+        es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
+        
+        if not turno_activo and not es_superadmin:
+            flash('❌ Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
+            try:
+                return redirect(url_for('dashboard.index'))
+            except Exception:
+                return redirect('/')
 
 # ==============================================================================
 # REGISTRO DE BLUEPRINTS
@@ -196,10 +196,10 @@ except Exception as e:
 
 @app.route('/')
 def index():
+    # Si hay una sesión activa, entra al dashboard. Si no, va al login de turno.
+    if '_user_id' in session or 'usuario_id' in session or 'rol' in session:
+        return redirect(url_for('dashboard.index'))
     return redirect(url_for('auth.login_turno'))
-    return redirect(url_for('dashboard.index'))
-
-
 
 # Alias de compatibilidad global: Redirige /login a /login-turno
 @app.route('/login')
@@ -207,10 +207,10 @@ def redirect_login_raiz():
     from flask import redirect, url_for
     return redirect(url_for('auth.login_turno'))
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
+# ==============================================================================
+# AQUÍ ABAJO DEBE CONTINUAR TU CÓDIGO (SECRET_KEY, BLOQUEOS, ETC.)
+# ¡Asegúrate de haber borrado el "if __name__ == '__main__':" con el app.run() de aquí!
+# ==============================================================================
 
     # ==============================================================================
     # SECRET_KEY segura y persistente
@@ -253,8 +253,7 @@ if __name__ == '__main__':
     # =========================================================================
     # INICIALIZAR BASE DE DATOS Y CLAVES
     # =========================================================================
-    db.init_app(app)
-
+    
     with app.app_context():
         db.create_all()
         _obtener_clave('pwa_password', _generar_password())
@@ -743,8 +742,6 @@ LOGIN_TEMPLATE = """
 
 
 if __name__ == '__main__':
-    app = create_app()
-
     with app.app_context():
         db.create_all()
 
@@ -766,7 +763,3 @@ if __name__ == '__main__':
         host='0.0.0.0',
         port=5000
     )
-
-
-
-

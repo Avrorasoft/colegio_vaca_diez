@@ -196,18 +196,18 @@ Gestión de Estudiantes - Colegio Dr. Antonio Vaca Díez
                                 {% endif %}
                             </td>
 
-                            <td>
-                                {% if est.foto_path and est.foto_path != 'default.png' %}
-                                <img src="{{ url_for('static', filename=est.foto_path) }}"
-                                     class="img-thumbnail"
-                                     style="max-width:60px;">
-                                {% else %}
-                                <div class="bg-light border text-center p-2"
-                                     style="width:60px;">
-                                    <small>S/F</small>
-                                </div>
-                                {% endif %}
-                            </td>
+						<td>
+							{% if est.foto_path and est.foto_path != 'default.png' %}
+							<img src="{{ url_for('static', filename=est.foto_path) }}?v={{ now().timestamp()|int }}"
+								class="img-thumbnail"
+								style="max-width:60px;">
+							{% else %}
+							<div class="bg-light border text-center p-2"
+								style="width:60px;">
+								<small>S/F</small>
+							</div>
+							{% endif %}
+						</td>
 
                             <td>
                                 {{ est.apellidos }}, {{ est.nombres }}

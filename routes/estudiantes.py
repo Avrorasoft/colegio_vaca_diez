@@ -385,13 +385,15 @@ def subir_foto(id):
                 img.save(filepath, optimize=True, quality=80)
 
             est.foto_path = f"uploads/estudiantes/{nuevo_nombre}"
+            db.session.add(est)
             db.session.commit()
 
-            # Retornar JSON con la URL exacta para que el JavaScript la actualice al instante
-            url_imagen = url_for('static', filename=est.foto_path)
+            # Retornar JSON con la URL exacta y un parámetro de tiempo para evitar caché del navegador
+            url_imagen = url_for('static', filename=est.foto_path) + f"?v={int(datetime.now().timestamp())}"
             return jsonify({'success': True, 'nueva_url': url_imagen})
 
         except Exception as e:
+            db.session.rollback()
             print(f"ERROR CRÍTICO AL SUBIR FOTO: {str(e)}")
             return jsonify({'success': False, 'message': f'Error al procesar la imagen: {str(e)}'}), 500
     else:

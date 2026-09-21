@@ -35,7 +35,7 @@ Cardex - {{ est.apellidos }}, {{ est.nombres }} - Colegio Dr. Antonio Vaca Díez
                 <!-- Contenedor dinámico de la foto con un ID para actualizar sin recargar -->
                 <div id="contenedorFotoPerfil" class="mb-2">
                     {% if est.foto_path and est.foto_path != 'default.png' %}
-                        <img id="imgPerfilEstudiante" src="{{ url_for('static', filename=est.foto_path) }}"
+                        <img id="imgPerfilEstudiante" src="{{ url_for('static', filename=est.foto_path) }}?v={{ now().timestamp()|int }}"
                              class="img-thumbnail rounded-circle shadow-sm"
                              style="width: 160px; height: 160px; object-fit: cover;">
                     {% else %}
