@@ -54,6 +54,51 @@ def _obtener_clave(clave, valor_por_defecto='N/A'):
     except Exception:
         pass
     return os.environ.get(clave.upper(), valor_por_defecto)
+
+@app.context_processor
+def inject_configuracion_institucional():
+    """
+    Inyector institucional genérico: Provee tanto 'configs' como el objeto 'institucion'
+    para garantizar compatibilidad total con base.html y todas las vistas.
+    """
+    config_dict = {
+        'institucion_linea1': 'INSTITUCIÓN EDUCATIVA',
+        'institucion_linea2': 'EDUCACIÓN Y EXCELENCIA',
+        'institucion_linea3': 'GESTIÓN ACADÉMICA',
+        'institucion_direccion': 'Ciudad, País',
+        'institucion_telefono': '000-0000',
+        'institucion_email': 'contacto@institucion.edu',
+        'institucion_ciudad': 'Ciudad',
+        'institucion_gestion': '2026',
+        'institucion_logo': 'uploads/logo_institucion.png'
+    }
+    
+    try:
+        registros = ConfiguracionSuperadmin.query.all()
+        for reg in registros:
+            if reg.clave in config_dict and reg.valor:
+                config_dict[reg.clave] = reg.valor
+    except Exception:
+        pass
+
+    logo_path = config_dict.get('institucion_logo', 'uploads/logo_institucion.png')
+    logo_url = url_for('static', filename=logo_path) if not logo_path.startswith('http') else logo_path
+    config_dict['institucion_logo_url'] = logo_url
+
+    # Retornamos todas las variantes posibles que los templates puedan invocar
+    return {
+        'configs': config_dict,
+        'institucion': config_dict,  # <-- Esto activará inmediatamente base.html
+        'institucion_linea1': config_dict['institucion_linea1'],
+        'institucion_linea2': config_dict['institucion_linea2'],
+        'institucion_linea3': config_dict['institucion_linea3'],
+        'institucion_direccion': config_dict['institucion_direccion'],
+        'institucion_telefono': config_dict['institucion_telefono'],
+        'institucion_email': config_dict['institucion_email'],
+        'institucion_ciudad': config_dict['institucion_ciudad'],
+        'institucion_gestion': config_dict['institucion_gestion'],
+        'institucion_logo_url': logo_url
+    }
 # ==============================================================================
 # BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
 # ==============================================================================

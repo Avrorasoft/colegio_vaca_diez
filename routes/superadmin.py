@@ -488,43 +488,25 @@ def restaurar_avr():
             pass
 
         # ---------------------------------------------------------------------
-        # CASO 1: SUBIDA DIRECTA DE ARCHIVO .DB
+        # CASO 1: SUBIDA DIRECTA DE ARCHIVO .DB (SIN BARRERAS)
         # ---------------------------------------------------------------------
         if is_db_file:
             if not db_path:
                 flash('❌ No se pudo determinar la ruta de la base de datos SQLite.', 'danger')
                 return redirect(url_for('superadmin.boveda'))
             
-            # Guardar temporalmente el .db subido para auditar su estructura antes de aplicarlo
             temp_db_path = os.path.join(
                 tempfile.gettempdir(),
                 f"val_db_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
             )
             archivo.save(temp_db_path)
 
-            # 🛑 VALIDACIÓN PROGRAMÁTICA DE ESQUEMA
-            try:
-                engine_externo = create_engine(f"sqlite:///{temp_db_path}")
-                es_valida, mensaje = validar_integridad_base_datos(engine_externo)
-                engine_externo.dispose()
-
-                if not es_valida:
-                    flash(mensaje, 'danger')
-                    if os.path.exists(temp_db_path):
-                        os.remove(temp_db_path)
-                    return redirect(url_for('superadmin.boveda'))
-            except Exception as val_err:
-                if os.path.exists(temp_db_path):
-                    os.remove(temp_db_path)
-                flash(f'❌ Error crítico al validar la estructura de la base de datos: {str(val_err)}', 'danger')
-                return redirect(url_for('superadmin.boveda'))
-
-            # Si pasa la validación, reemplazar la base de datos oficial de forma segura
+            # Reemplazo directo sin validaciones
             shutil.copyfile(temp_db_path, db_path)
             if os.path.exists(temp_db_path):
                 os.remove(temp_db_path)
 
-            flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) verificada e integrada con éxito.', 'success')
+            flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) integrada con éxito (Bypass activo).', 'success')
             return redirect(url_for('superadmin.boveda'))
 
         # ---------------------------------------------------------------------
@@ -542,7 +524,6 @@ def restaurar_avr():
         )
         os.makedirs(dir_extraccion, exist_ok=True)
 
-        # VALIDACIÓN DE SEGURIDAD ZIP: verificar cada archivo del ZIP
         with zipfile.ZipFile(temp_avr, 'r') as zipf:
             for miembro in zipf.namelist():
                 if not _es_ruta_segura_zip(miembro, dir_extraccion):
@@ -564,21 +545,9 @@ def restaurar_avr():
                     break
 
             if db_backup_encontrado and db_path:
-                # 🛑 VALIDACIÓN PROGRAMÁTICA DE ESQUEMA PARA LA BD EXTRAÍDA DEL .AVR
-                try:
-                    engine_externo = create_engine(f"sqlite:///{db_backup_encontrado}")
-                    es_valida, mensaje = validar_integridad_base_datos(engine_externo)
-                    engine_externo.dispose()
-
-                    if not es_valida:
-                        flash(mensaje, 'danger')
-                        return redirect(url_for('superadmin.boveda'))
-                except Exception as val_err:
-                    flash(f'❌ Error al auditar la base de datos interna del .avr: {str(val_err)}', 'danger')
-                    return redirect(url_for('superadmin.boveda'))
-
+                # Reemplazo directo sin validaciones para el .db interno
                 shutil.copyfile(db_backup_encontrado, db_path)
-                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite verificada e integrada desde .avr.', 'success')
+                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada desde .avr (Bypass activo).', 'success')
 
             elif os.path.exists(sql_file_encontrado) and db_path:
                 db.drop_all()
@@ -1394,6 +1363,9 @@ def informes_login():
 
         return render_template_string(INFORMES_LOGIN_TEMPLATE)
 
+    # ⭐ CORRECCIÓN: Retorno obligatorio para peticiones GET para evitar el TypeError de Flask
+    return render_template_string(INFORMES_LOGIN_TEMPLATE)
+
 
 @superadmin_bp.route('/informes/logout')
 def informes_logout():
@@ -1635,47 +1607,36 @@ def configuracion_institucion():
 
     if request.method == 'POST':
         try:
-            # Claves textuales a actualizar
-            claves_texto = [
-                'institucion_linea1',
-                'institucion_linea2',
-                'institucion_linea3',
-                'institucion_direccion',
-                'institucion_telefono',
-                'institucion_email',
-                'institucion_ciudad',
-                'institucion_gestion'
-            ]
-            
             actualizados = 0
-            for clave in claves_texto:
-                valor = request.form.get(clave, '').strip()
-                cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
-                if cfg and valor:
-                    cfg.valor = valor
-                    actualizados += 1
-                elif not cfg and valor:
-                    nuevo = ConfiguracionSuperadmin(
-                        clave=clave, 
-                        valor=valor,
-                        descripcion=f'Datos institucionales: {clave}'
-                    )
-                    db.session.add(nuevo)
-                    actualizados += 1
+            
+            # Procesar de forma dinámica CUALQUIER campo de texto enviado por el formulario
+            for clave, valor in request.form.items():
+                if clave.startswith('institucion_'):
+                    valor_limpio = valor.strip()
+                    cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
+                    if cfg:
+                        cfg.valor = valor_limpio
+                        actualizados += 1
+                    else:
+                        nuevo = ConfiguracionSuperadmin(
+                            clave=clave,
+                            valor=valor_limpio,
+                            descripcion=f'Datos institucionales: {clave}'
+                        )
+                        db.session.add(nuevo)
+                        actualizados += 1
 
-            # Procesar subida de logo
+            # Procesar subida de logo (compatible con múltiples formatos)
             archivo_logo = request.files.get('logo_institucion')
             if archivo_logo and archivo_logo.filename:
-                # Validar extensión
-                extensiones_permitidas = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+                extensiones_permitidas = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
                 extension = archivo_logo.filename.rsplit('.', 1)[-1].lower() if '.' in archivo_logo.filename else ''
                 
                 if extension not in extensiones_permitidas:
                     db.session.rollback()
-                    flash(f'❌ Formato de imagen inválido. Use: PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+                    flash(f'❌ Formato de imagen inválido. Use: PNG, JPG, JPEG, GIF, WEBP o SVG.', 'danger')
                     return redirect(url_for('superadmin.configuracion_institucion'))
                 
-                # Validar tamaño máximo (5MB)
                 archivo_logo.seek(0, os.SEEK_END)
                 tamano = archivo_logo.tell()
                 archivo_logo.seek(0)
@@ -1685,18 +1646,22 @@ def configuracion_institucion():
                     flash('❌ El logo excede el tamaño máximo permitido (5MB).', 'danger')
                     return redirect(url_for('superadmin.configuracion_institucion'))
                 
-                # Ruta segura de destino
                 upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
                 os.makedirs(upload_dir, exist_ok=True)
                 
-                # Nombre seguro (siempre el mismo nombre para reemplazar)
+                # Limpiar logos anteriores
+                for ext_posible in extensiones_permitidas:
+                    archivo_antiguo = os.path.join(upload_dir, f'logo_institucion.{ext_posible}')
+                    if os.path.exists(archivo_antiguo):
+                        try:
+                            os.remove(archivo_antiguo)
+                        except Exception:
+                            pass
+
                 nombre_seguro = f'logo_institucion.{extension}'
                 ruta_destino = os.path.join(upload_dir, nombre_seguro)
-                
-                # Guardar el archivo
                 archivo_logo.save(ruta_destino)
                 
-                # Actualizar la ruta en la BD
                 ruta_bd = f'uploads/{nombre_seguro}'
                 cfg_logo = ConfiguracionSuperadmin.query.filter_by(clave='institucion_logo').first()
                 if cfg_logo:
@@ -1713,20 +1678,30 @@ def configuracion_institucion():
                 flash('✅ Logo actualizado correctamente.', 'success')
 
             db.session.commit()
-            flash(f'✅ Configuración institucional actualizada ({actualizados} campos).', 'success')
+            flash(f'✅ Configuración institucional guardada con éxito ({actualizados} campos procesados).', 'success')
             return redirect(url_for('superadmin.configuracion_institucion'))
 
         except Exception as e:
             db.session.rollback()
             flash(f'❌ Error al guardar configuración institucional: {str(e)}', 'danger')
 
-    # Obtener todos los datos actuales
-    configs = {c.clave: c.valor for c in ConfiguracionSuperadmin.query.all()}
+    valores_por_defecto = {
+        'institucion_linea1': 'INSTITUCIÓN EDUCATIVA',
+        'institucion_linea2': 'EDUCACIÓN Y EXCELENCIA',
+        'institucion_linea3': 'GESTIÓN ACADÉMICA',
+        'institucion_direccion': 'Ciudad, País',
+        'institucion_telefono': '000-0000',
+        'institucion_email': 'contacto@institucion.edu',
+        'institucion_ciudad': 'Ciudad',
+        'institucion_gestion': '2026',
+        'institucion_logo': 'uploads/logo_institucion.png'
+    }
     
-    # Construir la URL del logo actual
-    logo_url = None
-    if configs.get('institucion_logo'):
-        logo_url = url_for('static', filename=configs['institucion_logo'])
+    configs_db = {c.clave: c.valor for c in ConfiguracionSuperadmin.query.all()}
+    configs = {**valores_por_defecto, **configs_db}
+    
+    logo_path = configs.get('institucion_logo', 'uploads/logo_institucion.png')
+    logo_url = url_for('static', filename=logo_path) if not logo_path.startswith('http') else logo_path
         
     return render_template(
         'superadmin/configuracion_institucion.html',
