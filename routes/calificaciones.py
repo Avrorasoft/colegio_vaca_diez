@@ -258,7 +258,7 @@ def registrar_calificacion():
         flash(f'❌ Error al registrar calificación: {str(e)}', 'danger')
 
     return redirect(url_for('calificaciones.libro_notas',
-                          curso=request.form.get('curso', '')))
+                            curso=request.form.get('curso', '')))
 
 # =========================================================================
 # REGISTRO MASIVO DE CALIFICACIONES

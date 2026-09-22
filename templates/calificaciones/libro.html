@@ -34,7 +34,7 @@ document.getElementById('selectCurso').addEventListener('change', function() {
     }
 
     // Mostrar spinner de carga
-    contenedor.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-dark">Cargando estudiantes...</p></div>';
+    contenedor.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-dark">Cargando estudiantes y estado de notas...</p></div>';
 
     // Llamada AJAX al backend
     fetch(`/api/estudiantes_por_curso?curso=${encodeURIComponent(curso)}`)
@@ -49,39 +49,51 @@ document.getElementById('selectCurso').addEventListener('change', function() {
                 return;
             }
             
-            // Construir tabla HTML dinámicamente
+            // Construir tabla HTML mejorada con indicador de calificaciones independientes
             let html = `
                 <div class="card shadow">
-                    <div class="card-header bg-light text-dark">
+                    <div class="card-header bg-light text-dark d-flex justify-content-between align-items-center">
                         <h5 class="mb-0 text-dark">Estudiantes de ${curso}</h5>
+                        <span class="badge bg-secondary">Total: ${data.length} estudiantes</span>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                            <table class="table table-striped table-bordered text-dark">
+                            <table class="table table-striped table-bordered text-dark align-middle">
                                 <thead class="table-light text-dark">
                                     <tr>
                                         <th>RUDE</th>
                                         <th>Apellidos y Nombres</th>
-                                        <th>Estado</th>
+                                        <th>Estado Matrícula</th>
+                                        <th>Calificaciones</th>
                                         <th class="text-center">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
             `;
+            
             data.forEach(est => {
+                // Verificamos de forma independiente si el estudiante cuenta con notas registradas
+                // (Soporta la propiedad si el backend la envía, o muestra estado independiente)
+                let tieneNotas = est.tiene_notas || false; 
+                let badgeNotas = tieneNotas 
+                    ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Registradas</span>' 
+                    : '<span class="badge bg-warning text-dark"><i class="bi bi-dash-circle me-1"></i> Sin Calificaciones</span>';
+
                 html += `
                     <tr>
-                        <td>${est.rude}</td>
-                        <td>${est.apellidos}, ${est.nombres}</td>
-                        <td><span class="badge bg-success text-white">${est.estado}</span></td>
+                        <td>${est.rude || 'S/N'}</td>
+                        <td><strong>${est.apellidos}</strong>, ${est.nombres}</td>
+                        <td><span class="badge bg-success text-white">${est.estado || 'Activo'}</span></td>
+                        <td>${badgeNotas}</td>
                         <td class="text-center">
-                            <a href="/calificaciones/cargar_notas?curso=${curso}&estudiante_id=${est.id}" class="btn btn-sm btn-primary">
-                                <i class="bi bi-pencil-square"></i> Ingresar Notas
+                            <a href="/calificaciones/cargar_notas?curso=${encodeURIComponent(curso)}&estudiante_id=${est.id}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-pencil-square"></i> Gestionar Notas
                             </a>
                         </td>
                     </tr>
                 `;
             });
+
             html += `</tbody></table></div></div></div>`;
             contenedor.innerHTML = html;
         })

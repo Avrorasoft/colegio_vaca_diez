@@ -5,14 +5,13 @@ Archivo: routes/superadmin.py
 Bóveda Superadmin con seguridad robusta:
 - Contraseñas desde BD (no hardcoded)
 - Rate limiting en logins
-- Path traversal bloqueado en .avr
+- Path traversal bloqueado
 - CSRF protegido
 ==============================================================================
 """
 
 import os
 import re
-import zipfile
 import tempfile
 import shutil
 import io
@@ -271,188 +270,82 @@ def cambiar_password_pwa():
         password_actual=password_actual)
 
 
-# =========================================================================
-# PROTECCIÓN PATH TRAVERSAL EN .AVR
-# =========================================================================
+# ==============================================================================
+# GENERAR RESPALDO DE BASE DE DATOS (.db)
+# ==============================================================================
 
-def _es_ruta_segura_zip(miembro, destino_base):
-    """Valida que un miembro del ZIP no escape del directorio destino."""
-    if miembro.startswith('/') or '..' in miembro:
-        return False
-    ruta_real = os.path.realpath(os.path.join(destino_base, miembro))
-    return ruta_real.startswith(os.path.realpath(destino_base))
-
-
-# =========================================================================
-# GENERAR BACKUP SQL MYSQL
-# =========================================================================
-
-def generar_backup_sql_mysql():
-    conexion = db.engine.raw_connection()
-    temp_dir = tempfile.gettempdir()
-    sql_path = os.path.join(
-        temp_dir, f"base_de_datos_{int(datetime.now().timestamp())}.sql"
-    )
-
-    with open(sql_path, 'w', encoding='utf-8') as f:
-        f.write("SET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';\n")
-
-        cursor = conexion.cursor()
-        cursor.execute("SHOW TABLES")
-
-        for (tabla,) in cursor.fetchall():
-            cursor.execute(f"SHOW CREATE TABLE `{tabla}`")
-            f.write(f"DROP TABLE IF EXISTS `{tabla}`;\n{cursor.fetchone()[1]};\n")
-
-            cursor.execute(f"SELECT * FROM `{tabla}`")
-            rows = cursor.fetchall()
-
-            if rows:
-                cols = [desc[0] for desc in cursor.description]
-                for row in rows:
-                    vals = []
-                    for val in row:
-                        if val is None:
-                            vals.append('NULL')
-                        elif isinstance(val, (int, float)):
-                            vals.append(str(val))
-                        elif isinstance(val, datetime):
-                            vals.append(f"'{val.strftime('%Y-%m-%d %H:%M:%S')}'")
-                        elif isinstance(val, bytes):
-                            vals.append(f"X'{val.hex()}'")
-                        else:
-                            vals.append(
-                                f"'{str(val).replace(chr(92), chr(92)*2).replace(chr(39), chr(92)+chr(39))}'"
-                            )
-                    f.write(
-                        f"INSERT INTO `{tabla}` ({', '.join([f'`{c}`' for c in cols])}) "
-                        f"VALUES ({', '.join(vals)});\n"
-                    )
-
-        f.write("SET FOREIGN_KEY_CHECKS=1;\n")
-
-        cursor.close()
-        conexion.close()
-    return sql_path
-
-
-# =========================================================================
-# 1. GENERAR PROYECTO (.avr)
-# =========================================================================
-
-@superadmin_bp.route('/generar_avr')
-def generar_avr():
+@superadmin_bp.route('/generar_db', methods=['GET'])
+def generar_db():
     if not check_superadmin():
         return redirect(url_for('dashboard.index'))
 
     try:
         fecha_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        nombre_avr = f"Proyecto_Colegio_{fecha_str}.avr"
+        nombre_db = f"respaldo_colegio_{fecha_str}.db"
 
-        # Obtener ruta de la base de datos SQLite
         db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        is_sqlite = 'sqlite:///' in db_uri
+        
+        if not is_sqlite:
+            flash('❌ La generación de respaldo directo solo está disponible para bases de datos SQLite.', 'danger')
+            return redirect(url_for('superadmin.boveda'))
+
         db_path = db_uri.replace('sqlite:///', '')
         if not os.path.isabs(db_path):
             db_path = os.path.join(current_app.root_path, db_path)
 
-        # Carpetas a respaldar (incluye código fuente y datos)
-        carpetas_datos = [
-            'static/uploads',
-            'static/recibos',
-            'static/boletines',
-            'static/recibos_personal',
-            'templates',
-            'routes',
-            'models.py',
-            'app.py',
-            'config.py'
-        ]
+        if not os.path.exists(db_path):
+            flash('❌ No se encontró el archivo físico de la base de datos.', 'danger')
+            return redirect(url_for('superadmin.boveda'))
 
-        memory_buffer = io.BytesIO()
-
-        with zipfile.ZipFile(memory_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # 1. Respaldo de base de datos SQLite
-            if os.path.exists(db_path):
-                zipf.write(db_path, "colegio_vaca_diez.db")
-                print(f"[AVR] Base de datos SQLite agregada: {db_path}")
-
-            # 2. Respaldo de archivos del proyecto
-            for item in carpetas_datos:
-                ruta_abs = os.path.join(current_app.root_path, item)
-                
-                # Si es un archivo individual
-                if os.path.isfile(ruta_abs):
-                    zipf.write(ruta_abs, item)
-                    print(f"[AVR] Archivo agregado: {item}")
-                
-                # Si es una carpeta
-                elif os.path.isdir(ruta_abs):
-                    count = 0
-                    for raiz, dirs, archivos in os.walk(ruta_abs):
-                        # Excluir carpetas de cache
-                        dirs[:] = [d for d in dirs if d not in ['__pycache__', '.pytest_cache', 'node_modules']]
-                        
-                        for archivo in archivos:
-                            # Incluir todos los archivos importantes
-                            if not archivo.endswith(('.pyc', '.db')):
-                                arch_abs = os.path.join(raiz, archivo)
-                                arcname = os.path.relpath(arch_abs, current_app.root_path)
-                                zipf.write(arch_abs, arcname)
-                                count += 1
-                    print(f"[AVR] Carpeta agregada: {item} ({count} archivos)")
-
-        memory_buffer.seek(0)
-        
-        # GUARDAR COPIA EN EL SERVIDOR (static/backups/)
         backups_dir = os.path.join(current_app.root_path, 'static', 'backups')
         os.makedirs(backups_dir, exist_ok=True)
-        backup_path = os.path.join(backups_dir, nombre_avr)
-        
-        with open(backup_path, 'wb') as f:
-            f.write(memory_buffer.getvalue())
-        
-        tamano_mb = os.path.getsize(backup_path) / (1024 * 1024)
-        print(f"[AVR] Respaldo guardado en servidor: {backup_path} ({tamano_mb:.2f} MB)")
-        
-        # Volver al inicio del buffer para la descarga
-        memory_buffer.seek(0)
+        backup_path = os.path.join(backups_dir, nombre_db)
 
-        flash(f'✅ Proyecto generado y guardado en static/backups/{nombre_avr} ({tamano_mb:.2f} MB). También se descargó a tu computadora.', 'success')
+        # Generar copia limpia y segura usando la API nativa de SQLite (Evita bloqueos en caliente)
+        conn_origen = sqlite3.connect(db_path)
+        conn_destino = sqlite3.connect(backup_path)
+        with conn_destino:
+            conn_origen.backup(conn_destino)
+        conn_origen.close()
+        conn_destino.close()
+
+        tamano_mb = os.path.getsize(backup_path) / (1024 * 1024)
+        print(f"[DB BACKUP] Respaldo generado con éxito: {backup_path} ({tamano_mb:.2f} MB)")
+
+        flash(f'✅ Respaldo de base de datos generado y guardado en static/backups/{nombre_db} ({tamano_mb:.2f} MB). Descarga iniciada.', 'success')
 
         return send_file(
-            memory_buffer,
+            backup_path,
             as_attachment=True,
-            download_name=nombre_avr,
-            mimetype='application/zip'
+            download_name=nombre_db,
+            mimetype='application/x-sqlite3'
         )
 
     except Exception as e:
-        flash(f'❌ Error al generar proyecto .avr: {str(e)}', 'danger')
+        current_app.logger.error(f"Error al generar respaldo .db: {e}")
+        flash(f'❌ Error crítico al generar el respaldo de la base de datos: {str(e)}', 'danger')
         return redirect(url_for('superadmin.boveda'))
 
 
-# -*- coding: utf-8 -*-
-# Asegúrate de tener estas importaciones arriba en tu archivo routes/superadmin.py:
-# from sqlalchemy import create_engine
-# from utils.validador_db import validar_integridad_base_datos
+# ==============================================================================
+# RESTAURAR BASE DE DATOS (.db)
+# ==============================================================================
 
-@superadmin_bp.route('/restaurar_avr', methods=['POST'])
-def restaurar_avr():
+@superadmin_bp.route('/restaurar_db', methods=['POST'])
+def restaurar_db():
     if not check_superadmin():
         return redirect(url_for('dashboard.index'))
 
-    archivo = request.files.get('archivo_avr')
+    archivo = request.files.get('archivo_db')
 
     if not archivo or not archivo.filename:
         flash('❌ No se seleccionó ningún archivo para restaurar.', 'danger')
         return redirect(url_for('superadmin.boveda'))
 
     filename = archivo.filename.lower()
-    is_db_file = filename.endswith('.db')
-    is_avr_file = filename.endswith('.avr')
-
-    if not (is_db_file or is_avr_file):
-        flash('❌ Formato inválido. Debe subir un archivo oficial .avr o una base de datos .db.', 'danger')
+    if not filename.endswith('.db'):
+        flash('❌ Formato inválido. Debe subir una base de datos oficial .db.', 'danger')
         return redirect(url_for('superadmin.boveda'))
 
     # Validar tamaño máximo (100MB)
@@ -472,12 +365,14 @@ def restaurar_avr():
         if not os.path.isabs(db_path):
             db_path = os.path.join(current_app.root_path, db_path)
 
-    temp_avr = None
-    dir_extraccion = None
+    if not db_path:
+        flash('❌ No se pudo determinar la ruta de la base de datos SQLite.', 'danger')
+        return redirect(url_for('superadmin.boveda'))
+
     temp_db_path = None
 
     try:
-        # ⭐ LIBERACIÓN TOTAL Y FORZOSA DE CONEXIONES DE BASE DE DATOS EN WINDOWS
+        # LIBERACIÓN TOTAL Y FORZOSA DE CONEXIONES DE BASE DE DATOS EN WINDOWS
         try:
             db.session.remove()
         except Exception:
@@ -487,128 +382,36 @@ def restaurar_avr():
         except Exception:
             pass
 
-        # ---------------------------------------------------------------------
-        # CASO 1: SUBIDA DIRECTA DE ARCHIVO .DB (SIN BARRERAS)
-        # ---------------------------------------------------------------------
-        if is_db_file:
-            if not db_path:
-                flash('❌ No se pudo determinar la ruta de la base de datos SQLite.', 'danger')
-                return redirect(url_for('superadmin.boveda'))
+        temp_db_path = os.path.join(
+            tempfile.gettempdir(),
+            f"val_db_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
+        )
+        archivo.save(temp_db_path)
+
+        # RESTAURACIÓN SEGURA USANDO LA API NATIVA DE SQLITE (Evita bloqueos en Windows)
+        conn_origen = sqlite3.connect(temp_db_path)
+        conn_destino = sqlite3.connect(db_path)
+        with conn_destino:
+            conn_origen.backup(conn_destino)
+        conn_origen.close()
+        conn_destino.close()
+
+        # ADAPTACIÓN AUTOMÁTICA DE ESQUEMA (El respaldo se adapta a la app actual)
+        with current_app.app_context():
+            db.create_all()
             
-            temp_db_path = os.path.join(
-                tempfile.gettempdir(),
-                f"val_db_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
-            )
-            archivo.save(temp_db_path)
+            # Verificación de seguridad para tablas y columnas clave (ej. gastos.archivo)
+            conexion_aux = sqlite3.connect(db_path)
+            cursor_aux = conexion_aux.cursor()
+            try:
+                cursor_aux.execute("ALTER TABLE gastos ADD COLUMN archivo VARCHAR(255)")
+                conexion_aux.commit()
+            except Exception:
+                pass # La columna ya existe
+            conexion_aux.close()
 
-            # Reemplazo directo sin validaciones
-            shutil.copyfile(temp_db_path, db_path)
-            if os.path.exists(temp_db_path):
-                os.remove(temp_db_path)
+        flash('✅ ¡SISTEMA RESTAURADO Y ADAPTADO! Base de datos SQLite (.db) integrada con éxito (Bypass activo y esquema sincronizado).', 'success')
 
-            flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) integrada con éxito (Bypass activo).', 'success')
-            return redirect(url_for('superadmin.boveda'))
-
-        # ---------------------------------------------------------------------
-        # CASO 2: PROCESO PARA ARCHIVOS .AVR (RESPALDOS COMPRIMIDOS)
-        # ---------------------------------------------------------------------
-        temp_avr = os.path.join(
-            tempfile.gettempdir(),
-            f"upload_{int(datetime.now().timestamp())}_{secure_filename(archivo.filename)}"
-        )
-        archivo.save(temp_avr)
-
-        dir_extraccion = os.path.join(
-            tempfile.gettempdir(),
-            f"avr_ext_{int(datetime.now().timestamp())}"
-        )
-        os.makedirs(dir_extraccion, exist_ok=True)
-
-        with zipfile.ZipFile(temp_avr, 'r') as zipf:
-            for miembro in zipf.namelist():
-                if not _es_ruta_segura_zip(miembro, dir_extraccion):
-                    raise ValueError(f"Archivo inseguro detectado en .avr: {miembro}")
-                if len(miembro) > 255:
-                    raise ValueError(f"Nombre de archivo demasiado largo: {miembro}")
-            zipf.extractall(dir_extraccion)
-
-        if is_sqlite:
-            db_backup_encontrado = None
-            sql_file_encontrado = os.path.join(dir_extraccion, "base_de_datos.sql")
-
-            for root, dirs, files in os.walk(dir_extraccion):
-                for f in files:
-                    if f.endswith('.db'):
-                        db_backup_encontrado = os.path.join(root, f)
-                        break
-                if db_backup_encontrado:
-                    break
-
-            if db_backup_encontrado and db_path:
-                # Reemplazo directo sin validaciones para el .db interno
-                shutil.copyfile(db_backup_encontrado, db_path)
-                flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada desde .avr (Bypass activo).', 'success')
-
-            elif os.path.exists(sql_file_encontrado) and db_path:
-                db.drop_all()
-                db.create_all()
-
-                conexion_sqlite = sqlite3.connect(db_path)
-                cursor_sqlite = conexion_sqlite.cursor()
-
-                with open(sql_file_encontrado, 'r', encoding='utf-8') as f:
-                    contenido_sql = f.read()
-
-                for sentencia in contenido_sql.split(';'):
-                    sentencia_limpia = sentencia.strip()
-                    if sentencia_limpia.upper().startswith('INSERT INTO'):
-                        try:
-                            cursor_sqlite.execute(sentencia_limpia)
-                        except Exception:
-                            pass
-
-                conexion_sqlite.commit()
-                cursor_sqlite.close()
-                conexion_sqlite.close()
-
-                flash('✅ ¡SISTEMA RESTAURADO! Registros SQL importados.', 'success')
-            else:
-                flash('❌ El archivo .avr no contiene una base de datos compatible.', 'danger')
-                return redirect(url_for('superadmin.boveda'))
-
-        else:
-            sql_file = os.path.join(dir_extraccion, "base_de_datos.sql")
-            if os.path.exists(sql_file):
-                conexion = db.engine.raw_connection()
-                cursor = conexion.cursor()
-
-                with open(sql_file, 'r', encoding='utf-8') as f:
-                    comandos_sql = f.read().split(';')
-                    for comando in comandos_sql:
-                        if comando.strip():
-                            try:
-                                cursor.execute(comando)
-                            except Exception:
-                                pass
-
-                conexion.commit()
-                cursor.close()
-                conexion.close()
-                flash('✅ ¡SISTEMA RESTAURADO! MySQL integrada.', 'success')
-            else:
-                flash('❌ El archivo .avr no contiene un respaldo SQL compatible.', 'danger')
-                return redirect(url_for('superadmin.boveda'))
-
-        for item in os.listdir(dir_extraccion):
-            if not item.endswith('.db') and item != 'base_de_datos.sql':
-                origen = os.path.join(dir_extraccion, item)
-                destino = os.path.join(current_app.root_path, item)
-                if os.path.isdir(origen):
-                    shutil.copytree(origen, destino, dirs_exist_ok=True)
-
-    except ValueError as ve:
-        current_app.logger.error(f"🚨 Intento de path traversal: {ve}")
-        flash(f'🚫 Archivo rechazado por seguridad: {str(ve)}', 'danger')
     except Exception as e:
         current_app.logger.error(f"Error crítico restauración: {e}")
         flash(f'❌ Error crítico durante la restauración: {str(e)}', 'danger')
@@ -617,16 +420,6 @@ def restaurar_avr():
         if temp_db_path and os.path.exists(temp_db_path):
             try:
                 os.remove(temp_db_path)
-            except Exception:
-                pass
-        if temp_avr and os.path.exists(temp_avr):
-            try:
-                os.remove(temp_avr)
-            except Exception:
-                pass
-        if dir_extraccion and os.path.exists(dir_extraccion):
-            try:
-                shutil.rmtree(dir_extraccion)
             except Exception:
                 pass
 
