@@ -123,8 +123,8 @@
         </div>
     </div>
 
-    <!-- Planilla de Calificaciones -->
-    <form method="POST" action="{{ url_for('profesores_portal.guardar_notas_matriz', materia_id=materia.id) }}" id="formPlanillaNotas">
+    <!-- Planilla de Calificaciones (Añadido novalidate para evitar bloqueos del navegador) -->
+    <form method="POST" action="{{ url_for('profesores_portal.guardar_notas_matriz', materia_id=materia.id) }}" id="formPlanillaNotas" novalidate>
         <input type="hidden" name="periodo" value="{{ periodo_sel }}">
 
         <div class="card shadow-sm border-0 mb-4">
@@ -193,18 +193,15 @@
                                         {% for c in criterios %}
                                             {% set reg_cal = cal_matrix.get((est.id, c.nombre)) %}
                                             <td class="text-center">
+                                                <!-- Usamos type="text" para evitar validaciones nativas restrictivas del navegador -->
                                                 <input 
-                                                    type="number" 
+                                                    type="text" 
                                                     name="criterio_{{ est.id }}_{{ c.id }}" 
                                                     class="form-control form-control-sm text-center input-nota-entera input-nota-estudiante"
                                                     data-estudiante="{{ est.id }}"
                                                     data-max="{{ c.puntaje_maximo }}"
-                                                    min="0" 
-                                                    max="{{ c.puntaje_maximo }}" 
-                                                    step="{% if c.permite_decimales %}0.1{% else %}1{% endif %}"
                                                     value="{% if reg_cal and reg_cal.nota is not none %}{% if not c.permite_decimales %}{{ reg_cal.nota|int }}{% else %}{{ reg_cal.nota }}{% endif %}{% endif %}"
                                                     placeholder="0"
-                                                    required
                                                 >
                                             </td>
                                         {% endfor %}
@@ -253,6 +250,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const inputs = document.querySelectorAll('.input-nota-estudiante');
+        const form = document.getElementById('formPlanillaNotas');
 
         function recalcularFila(estId) {
             const inputsEstudiante = document.querySelectorAll(`.input-nota-estudiante[data-estudiante="${estId}"]`);
@@ -296,6 +294,17 @@
                 recalcularFila(estId);
             });
         });
+
+        // Limpieza al enviar para garantizar que los campos vacíos no generen bloqueos ni errores
+        if (form) {
+            form.addEventListener('submit', function() {
+                inputs.forEach(inp => {
+                    if (inp.value.trim() === '') {
+                        inp.disabled = true; // Ignora celdas vacías para permitir guardado parcial libre
+                    }
+                });
+            });
+        }
     });
 </script>
 {% endblock %}

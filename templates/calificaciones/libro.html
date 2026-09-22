@@ -1,106 +1,95 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container-fluid py-4">
-    <h2 class="text-dark mb-4">Libro de Notas Digital</h2>
+    <h2 class="text-dark mb-4"><i class="bi bi-journal-richtext"></i> Libro de Notas Digital</h2>
 
+    <!-- Selector de Curso -->
     <div class="card shadow mb-4">
         <div class="card-body text-dark">
-            <label for="selectCurso" class="form-label fw-bold">Seleccionar Curso:</label>
-            <select id="selectCurso" class="form-select">
-                <option value="">-- Seleccione un curso --</option>
-                {% for c in cursos %}
-                <option value="{{ c }}">{{ c }}</option>
-                {% endfor %}
-            </select>
+            <form method="GET" action="{{ url_for('calificaciones.libro_notas') }}">
+                <label for="selectCurso" class="form-label fw-bold">Seleccionar Curso:</label>
+                <select id="selectCurso" name="curso" class="form-select" onchange="this.form.submit()">
+                    <option value="">-- Seleccione un curso --</option>
+                    {% for c in cursos %}
+                    <option value="{{ c }}" {% if curso_seleccionado == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </form>
         </div>
     </div>
 
-    <!-- Contenedor donde se inyectarán los estudiantes -->
-    <div id="contenedorEstudiantes" class="text-dark">
-        <div class="alert alert-info text-dark">
-            <i class="bi bi-info-circle-fill"></i> Seleccione un curso para ver la lista de estudiantes y registrar notas.
+    <!-- Matriz del Libro de Notas -->
+    {% if curso_seleccionado %}
+    <div class="card shadow">
+        <div class="card-header bg-light text-dark d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 text-dark">Libro de Notas - {{ curso_seleccionado }}</h5>
+            <span class="badge bg-secondary">Total Estudiantes Activos: {{ estudiantes|length }}</span>
+        </div>
+        <div class="card-body">
+            {% if estudiantes %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped text-dark align-middle">
+                    <thead class="table-dark text-white text-center">
+                        <tr>
+                            <th style="min-width: 220px; text-align: left;">Estudiante</th>
+                            {% for materia in materias %}
+                            <th style="min-width: 160px;">{{ materia.nombre }}</th>
+                            {% endfor %}
+                            <th style="min-width: 120px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for est in estudiantes %}
+                        <tr>
+                            <td>
+                                <strong>{{ est.apellidos }}, {{ est.nombres }}</strong>
+                                <br><small class="text-muted">RUDE: {{ est.rude }}</small>
+                            </td>
+                            
+                            <!-- Recorremos cada materia evaluando al alumno de forma 100% independiente -->
+                            {% for materia in materias %}
+                            <td class="text-center">
+                                {% set notas_materia = calificaciones_dict.get(est.id, {}).get(materia.id, []) %}
+                                {% if notas_materia %}
+                                    <!-- Alumno calificado: muestra sus notas con total normalidad -->
+                                    <div class="d-flex flex-column gap-1">
+                                        {% for n in notas_materia %}
+                                        <span class="badge bg-primary">
+                                            {{ n.tipo }}: <strong>{{ n.nota }}</strong>
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <!-- Alumno sin notas: celda limpia, convive en el mismo curso sin bloquear a los demás -->
+                                    <span class="text-muted small fst-italic">- Sin notas -</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+
+                            <!-- Acciones por estudiante -->
+                            <td class="text-center">
+                                {% if materias %}
+                                <a href="{{ url_for('calificaciones.cargar_notas', materia_id=materias[0].id, curso=curso_seleccionado) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-pencil-square"></i> Notas
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-warning text-dark mb-0">
+                No hay estudiantes activos registrados para este curso.
+            </div>
+            {% endif %}
         </div>
     </div>
+    {% else %}
+    <div class="alert alert-info text-dark">
+        <i class="bi bi-info-circle-fill"></i> Seleccione un curso en la parte superior para visualizar la matriz del libro de notas.
+    </div>
+    {% endif %}
 </div>
-
-<script>
-document.getElementById('selectCurso').addEventListener('change', function() {
-    const curso = this.value;
-    const contenedor = document.getElementById('contenedorEstudiantes');
-    
-    if (!curso) {
-        contenedor.innerHTML = '<div class="alert alert-info text-dark">Seleccione un curso para ver la lista de estudiantes.</div>';
-        return;
-    }
-
-    // Mostrar spinner de carga
-    contenedor.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-dark">Cargando estudiantes y estado de notas...</p></div>';
-
-    // Llamada AJAX al backend
-    fetch(`/api/estudiantes_por_curso?curso=${encodeURIComponent(curso)}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                contenedor.innerHTML = `<div class="alert alert-danger text-dark">${data.error}</div>`;
-                return;
-            }
-            if (data.length === 0) {
-                contenedor.innerHTML = '<div class="alert alert-warning text-dark">No hay estudiantes activos registrados para este curso.</div>';
-                return;
-            }
-            
-            // Construir tabla HTML mejorada con indicador de calificaciones independientes
-            let html = `
-                <div class="card shadow">
-                    <div class="card-header bg-light text-dark d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0 text-dark">Estudiantes de ${curso}</h5>
-                        <span class="badge bg-secondary">Total: ${data.length} estudiantes</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-bordered text-dark align-middle">
-                                <thead class="table-light text-dark">
-                                    <tr>
-                                        <th>RUDE</th>
-                                        <th>Apellidos y Nombres</th>
-                                        <th>Estado Matrícula</th>
-                                        <th>Calificaciones</th>
-                                        <th class="text-center">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-            `;
-            
-            data.forEach(est => {
-                // Verificamos de forma independiente si el estudiante cuenta con notas registradas
-                // (Soporta la propiedad si el backend la envía, o muestra estado independiente)
-                let tieneNotas = est.tiene_notas || false; 
-                let badgeNotas = tieneNotas 
-                    ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Registradas</span>' 
-                    : '<span class="badge bg-warning text-dark"><i class="bi bi-dash-circle me-1"></i> Sin Calificaciones</span>';
-
-                html += `
-                    <tr>
-                        <td>${est.rude || 'S/N'}</td>
-                        <td><strong>${est.apellidos}</strong>, ${est.nombres}</td>
-                        <td><span class="badge bg-success text-white">${est.estado || 'Activo'}</span></td>
-                        <td>${badgeNotas}</td>
-                        <td class="text-center">
-                            <a href="/calificaciones/cargar_notas?curso=${encodeURIComponent(curso)}&estudiante_id=${est.id}" class="btn btn-sm btn-primary">
-                                <i class="bi bi-pencil-square"></i> Gestionar Notas
-                            </a>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            html += `</tbody></table></div></div></div>`;
-            contenedor.innerHTML = html;
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            contenedor.innerHTML = '<div class="alert alert-danger text-dark">Error de conexión al cargar los estudiantes.</div>';
-        });
-});
-</script>
 {% endblock %}

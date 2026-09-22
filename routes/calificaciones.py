@@ -71,11 +71,11 @@ def actualizar_promedio_materia(estudiante_id, materia_id):
         print(f"Error al calcular promedio automático para materia {materia_id}: {e}")
 
 # =========================================================================
-# LIBRO DE NOTAS (Vista principal por curso)
+# LIBRO DE NOTAS (Vista principal por curso - Lógica Independiente por Fila)
 # =========================================================================
 @calificaciones_bp.route('/libro')
 def libro_notas():
-    """Muestra el libro de notas filtrado por curso."""
+    """Muestra el libro de notas por curso permitiendo la convivencia de alumnos con y sin notas."""
     curso_seleccionado = request.args.get('curso', '')
     gestion = request.args.get('gestion', ahora_bolivia().year, type=int)
     tipo_evaluacion = request.args.get('tipo', '')
@@ -88,17 +88,19 @@ def libro_notas():
     calificaciones_dict = {}
 
     if curso_seleccionado:
+        # 1. Traemos TODOS los estudiantes activos del curso de forma independiente
         estudiantes = Estudiante.query.filter_by(
             curso=curso_seleccionado, estado='Activo'
         ).order_by(Estudiante.apellidos, Estudiante.nombres).all()
 
+        # 2. Traemos las materias correspondientes al curso
         materias = Materia.query.filter_by(curso_id=curso_seleccionado).order_by(Materia.nombre).all()
-
         if not materias:
             materias = Materia.query.order_by(Materia.nombre).all()
 
         estudiante_ids = [e.id for e in estudiantes]
         if estudiante_ids:
+            # 3. Consultamos las notas de los alumnos que SÍ tienen registros, sin excluir a los demás
             query_cal = Calificacion.query.filter(
                 Calificacion.estudiante_id.in_(estudiante_ids)
             ).options(joinedload(Calificacion.materia))
@@ -108,6 +110,7 @@ def libro_notas():
 
             calificaciones = query_cal.all()
 
+            # 4. Agrupamos en un diccionario por estudiante y materia de forma aislada
             for cal in calificaciones:
                 if cal.estudiante_id not in calificaciones_dict:
                     calificaciones_dict[cal.estudiante_id] = {}
@@ -127,12 +130,9 @@ def libro_notas():
                            tipos_evaluacion=tipos_evaluacion,
                            tipo_actual=tipo_evaluacion)
 
-# =========================================================================
-# CARGAR NOTAS (Vista y procesamiento por Materia y Curso)
-# =========================================================================
 @calificaciones_bp.route('/cargar_notas/<int:materia_id>', methods=['GET', 'POST'])
 def cargar_notas(materia_id):
-    """Permite ingresar notas por materia y curso mostrando los promedios actuales."""
+    """Permite ingresar y actualizar notas basadas en los criterios dinámicos de forma 100% parcial y flexible."""
     materia = Materia.query.get_or_404(materia_id)
     curso = request.args.get('curso', '') or request.form.get('curso', '')
 
@@ -140,60 +140,103 @@ def cargar_notas(materia_id):
         curso=curso, estado='Activo'
     ).order_by(Estudiante.apellidos, Estudiante.nombres).all()
 
+    # Obtenemos los criterios dinámicos para esta materia
+    from routes.profesores_portal import obtener_criterios_materia
+    criterios, origen, es_nidito, nivel = obtener_criterios_materia(materia_id)
+
     if request.method == 'POST':
         try:
+            guardados_count = 0
             for est in estudiantes:
-                tipo = request.form.get(f'tipo_{est.id}', 'Parcial 1')
-                nota_str = request.form.get(f'nota_{est.id}', '')
-                if nota_str:
+                for crit in criterios:
+                    nombre_campo = f"criterio_{est.id}_{crit.id}"
+                    nota_str = request.form.get(nombre_campo, '').strip()
+
+                    # Si el usuario dejó el campo vacío, permitimos que se quede vacío o limpiamos si ya no aplica,
+                    # pero NUNCA tocamos ni borramos los demás registros de sus compañeros.
+                    if not nota_str:
+                        continue
+
                     try:
-                        nota = float(nota_str)
-                        if 0 <= nota <= 100:
+                        if crit.tipo_evaluacion == 'NUMERICA':
+                            valor = float(nota_str)
+                            if 0 <= valor <= crit.puntaje_maximo:
+                                cal_existente = Calificacion.query.filter_by(
+                                    estudiante_id=est.id,
+                                    materia_id=materia.id,
+                                    tipo=crit.nombre
+                                ).first()
+
+                                if cal_existente:
+                                    cal_existente.nota = valor
+                                    cal_existente.fecha = ahora_bolivia()
+                                else:
+                                    nueva_cal = Calificacion(
+                                        estudiante_id=est.id,
+                                        materia_id=materia.id,
+                                        tipo=crit.nombre,
+                                        nota=valor,
+                                        fecha=ahora_bolivia()
+                                    )
+                                    db.session.add(nueva_cal)
+                                guardados_count += 1
+                        elif crit.tipo_evaluacion == 'CUALITATIVA':
                             cal_existente = Calificacion.query.filter_by(
                                 estudiante_id=est.id,
                                 materia_id=materia.id,
-                                tipo=tipo
+                                tipo=crit.nombre
                             ).first()
 
                             if cal_existente:
-                                cal_existente.nota = nota
+                                cal_existente.observacion = nota_str
                                 cal_existente.fecha = ahora_bolivia()
                             else:
                                 nueva_cal = Calificacion(
                                     estudiante_id=est.id,
                                     materia_id=materia.id,
-                                    tipo=tipo,
-                                    nota=nota,
+                                    tipo=crit.nombre,
+                                    observacion=nota_str,
                                     fecha=ahora_bolivia()
                                 )
                                 db.session.add(nueva_cal)
+                            guardados_count += 1
                     except ValueError:
                         pass
 
             db.session.flush()
 
+            # Recalculamos los promedios y totales de los estudiantes
             for est in estudiantes:
                 actualizar_promedio_materia(est.id, materia.id)
 
             db.session.commit()
-            flash('✅ Notas guardadas y promedios actualizados correctamente', 'success')
-            return redirect(url_for('calificaciones.libro_notas', curso=curso))
+            if guardados_count > 0:
+                flash(f'✅ Se guardaron {guardados_count} registros correctamente', 'success')
+            else:
+                flash('ℹ️ No se detectaron cambios nuevos para guardar.', 'info')
+                
+            return redirect(url_for('calificaciones.cargar_notas', materia_id=materia_id, curso=curso))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'❌ Error al guardar las notas: {str(e)}', 'danger')
+            print(f"Error al guardar notas por criterios: {e}")
+            flash(f'❌ Error al guardar las calificaciones: {str(e)}', 'danger')
 
+    # Diccionario adaptado para emparejar exactamente con el ID del criterio en la vista
     promedios = {}
+    notas_dict = {}
     for est in estudiantes:
         cals = Calificacion.query.filter(
             Calificacion.estudiante_id == est.id,
-            Calificacion.materia_id == materia.id,
-            Calificacion.tipo != 'Promedio'
+            Calificacion.materia_id == materia.id
         ).all()
         
-        notas_validas = [c.nota for c in cals if c.nota is not None]
+        # Mapeamos usando el nombre del criterio para que la interfaz lo recupere perfecto
+        notas_dict[est.id] = {c.tipo: (c.nota if c.nota is not None else c.observacion) for c in cals}
+        
+        notas_validas = [c.nota for c in cals if c.tipo != 'Promedio' and c.nota is not None]
         if notas_validas:
-            promedios[est.id] = round(sum(notas_validas) / len(notas_validas), 2)
+            promedios[est.id] = round(sum(notas_validas), 2)
         else:
             promedios[est.id] = 0.0
 
@@ -201,28 +244,46 @@ def cargar_notas(materia_id):
                            materia=materia,
                            curso=curso,
                            estudiantes=estudiantes,
-                           promedios=promedios)
+                           criterios=criterios,
+                           promedios=promedios,
+                           notas_dict=notas_dict)
 
 # =========================================================================
-# REGISTRAR / ACTUALIZAR CALIFICACIÓN INDIVIDUAL
+# REGISTRAR / ACTUALIZAR CALIFICACIÓN INDIVIDUAL (Versión Flexible)
 # =========================================================================
 @calificaciones_bp.route('/registrar', methods=['POST'])
 def registrar_calificacion():
-    """Registra o actualiza una calificación individual y recalcula su promedio."""
+    """Registra, actualiza o limpia una calificación individual de forma flexible."""
     try:
         estudiante_id = int(request.form.get('estudiante_id'))
         materia_id = int(request.form.get('materia_id'))
         tipo = request.form.get('tipo', 'Parcial 1')
-        nota_str = request.form.get('nota', '0')
+        nota_str = request.form.get('nota', '').strip()
+
+        # Si mandan el campo vacío, podemos optar por eliminar el registro o ignorarlo
+        if not nota_str:
+            cal_existente = Calificacion.query.filter_by(
+                estudiante_id=estudiante_id,
+                materia_id=materia_id,
+                tipo=tipo
+            ).first()
+            if cal_existente:
+                db.session.delete(cal_existente)
+                db.session.flush()
+                actualizar_promedio_materia(estudiante_id, materia_id)
+                db.session.commit()
+                flash('ℹ️ Calificación retirada correctamente', 'info')
+            return redirect(url_for('calificaciones.libro_notas', curso=request.form.get('curso', '')))
 
         try:
             nota = float(nota_str)
         except ValueError:
-            nota = 0.0
+            flash('❌ La nota ingresada no es válida', 'danger')
+            return redirect(url_for('calificaciones.libro_notas', curso=request.form.get('curso', '')))
 
         if nota < 0 or nota > 100:
             flash('❌ La nota debe estar entre 0 y 100', 'danger')
-            return redirect(url_for('calificaciones.libro_notas'))
+            return redirect(url_for('calificaciones.libro_notas', curso=request.form.get('curso', '')))
 
         cal_existente = Calificacion.query.filter_by(
             estudiante_id=estudiante_id,
