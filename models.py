@@ -449,10 +449,6 @@ class Falta(db.Model):
         return f"<Falta {self.tipo_sujeto} CI:{self.ci_sujeto}>"
 
 
-# ==============================================================================
-# GASTO
-# ==============================================================================
-
 class Gasto(db.Model):
     __tablename__ = 'gastos'
 
@@ -465,10 +461,12 @@ class Gasto(db.Model):
     proveedor = db.Column(db.String(100), nullable=True)
     responsable = db.Column(db.String(100), nullable=True)
     metodo_pago = db.Column(db.String(20), default='Efectivo')
+    
+    # Columna para almacenar el archivo adjunto (imágenes, PDFs, Word y Excel)
+    archivo = db.Column(db.String(255), nullable=True)
 
     def __repr__(self):
         return f"<Gasto {self.categoria}>"
-
 
 # ==============================================================================
 # MENSAJE / CHAT

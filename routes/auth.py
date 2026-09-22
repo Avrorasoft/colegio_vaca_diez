@@ -10,30 +10,41 @@ Desarrollado por: Avrora Soft - Vibola LLC
 import os
 import time
 import stat
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, make_response
 from werkzeug.security import check_password_hash, generate_password_hash
-from models import db, ConfiguracionInstitucion, PersonalAdministrativo, Profesor, Estudiante
+
+# Importamos ConfiguracionSuperadmin para garantizar que los datos globales se restauren
+from models import db, ConfiguracionInstitucion, PersonalAdministrativo, Profesor, Estudiante, ConfiguracionSuperadmin
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """
-    Controlador principal de inicio de sesión institucional con lectura correcta 
-    del campo 'username' proveniente de la plantilla HTML.
-    """
+    """Controlador principal de inicio de sesión institucional con control físico de logo."""
     if session.get('user_id') or session.get('superadmin') or session.get('logged_in'):
         return redirect(url_for('dashboard.index'))
 
     config = ConfiguracionInstitucion.query.first()
+    logo_path = getattr(config, 'institucion_logo', '') if config else ''
+    logo_url = ''
+    
+    # Verificación de existencia física del archivo
+    if logo_path:
+        try:
+            full_path = os.path.join(current_app.root_path, 'static', logo_path.split('?')[0])
+            if os.path.exists(full_path):
+                timestamp = int(os.path.getmtime(full_path))
+                logo_url = url_for('static', filename=logo_path.split('?')[0]) + f"?v={timestamp}"
+        except Exception:
+            pass
+
     institucion_dict = {
         'institucion_linea1': getattr(config, 'institucion_linea1', 'Sistema de Gestión Escolar') if config else 'Sistema de Gestión Escolar',
         'institucion_linea2': getattr(config, 'institucion_linea2', '') if config else '',
-        'institucion_logo': getattr(config, 'institucion_logo', 'uploads/logo_institucion.png') if config else 'uploads/logo_institucion.png'
+        'institucion_logo': logo_url
     }
 
     if request.method == 'POST':
-        # Capturamos correctamente 'username' (como viene en el HTML) o 'usuario' por seguridad
         identificador = (request.form.get('username') or request.form.get('usuario') or '').strip()
         password = request.form.get('password', '').strip()
 
@@ -41,9 +52,7 @@ def login():
             flash('❌ Por favor, ingrese su usuario y contraseña.', 'danger')
             return render_template('auth/login.html', institucion=institucion_dict)
 
-        # ------------------------------------------------------------------
-        # ACCESO MAESTRO INMEDIATO (Admin / admin2026)
-        # ------------------------------------------------------------------
+        # Acceso Maestro
         if identificador == 'admin' and password == 'admin2026':
             session['user_id'] = 1
             session['user_role'] = 'administrativo'
@@ -117,12 +126,24 @@ def login():
 
 @auth_bp.route('/login-turno', methods=['GET', 'POST'])
 def login_turno():
-    """Sistema de turnos independiente para control de caja."""
+    """Sistema de turnos independiente con verificación de logo físico."""
     config = ConfiguracionInstitucion.query.first()
+    logo_path = getattr(config, 'institucion_logo', '') if config else ''
+    logo_url = ''
+    
+    if logo_path:
+        try:
+            full_path = os.path.join(current_app.root_path, 'static', logo_path.split('?')[0])
+            if os.path.exists(full_path):
+                timestamp = int(os.path.getmtime(full_path))
+                logo_url = url_for('static', filename=logo_path.split('?')[0]) + f"?v={timestamp}"
+        except Exception:
+            pass
+
     institucion_dict = {
         'institucion_linea1': getattr(config, 'institucion_linea1', 'Sistema de Gestión Escolar') if config else 'Sistema de Gestión Escolar',
         'institucion_linea2': getattr(config, 'institucion_linea2', '') if config else '',
-        'institucion_logo': getattr(config, 'institucion_logo', 'uploads/logo_institucion.png') if config else 'uploads/logo_institucion.png'
+        'institucion_logo': logo_url
     }
 
     if request.method == 'POST':
@@ -154,18 +175,43 @@ def logout_turno():
 
 @auth_bp.route('/sistema/reset-fabrica', methods=['POST'])
 def reset_fabrica():
+    """
+    Restablecimiento de fábrica atómico:
+    Purga recursiva de uploads, reconstrucción de BD y logo en blanco
+    para detonar el SVG vectorial automático.
+    """
     try:
+        db.session.remove()
+        
         root_path = current_app.root_path
         instance_path = current_app.instance_path
         static_dir = os.path.join(root_path, 'static')
         
+        uploads_dir = os.path.join(static_dir, 'uploads')
+        if os.path.exists(uploads_dir):
+            for root_dir, dirs, files in os.walk(uploads_dir, topdown=False):
+                for filename in files:
+                    file_path = os.path.join(root_dir, filename)
+                    try:
+                        os.chmod(file_path, stat.S_IWRITE)
+                        os.remove(file_path)
+                    except Exception:
+                        pass
+                for dirname in dirs:
+                    dir_path = os.path.join(root_dir, dirname)
+                    try:
+                        os.rmdir(dir_path)
+                    except Exception:
+                        pass
+
         for path in [root_path, instance_path]:
             if os.path.exists(path):
                 for file in os.listdir(path):
                     if file.endswith('.db'):
                         try:
-                            os.chmod(os.path.join(path, file), stat.S_IWRITE)
-                            os.remove(os.path.join(path, file))
+                            db_file_path = os.path.join(path, file)
+                            os.chmod(db_file_path, stat.S_IWRITE)
+                            os.remove(db_file_path)
                         except Exception:
                             pass
 
@@ -175,16 +221,45 @@ def reset_fabrica():
         config_inicial = ConfiguracionInstitucion(
             institucion_linea1="Sistema de Gestión Escolar",
             institucion_linea2="Módulo Académico Institucional",
-            institucion_logo="uploads/logo_institucion.png"
+            institucion_logo=""
         )
         db.session.add(config_inicial)
+
+        configs_globales = [
+            ('institucion_linea1', 'Sistema de Gestión Escolar'),
+            ('institucion_linea2', 'Módulo Académico Institucional'),
+            ('institucion_linea3', 'Gestión Educativa Integral'),
+            ('institucion_logo', ''),
+            ('institucion_configurada', 'true'),
+            ('pwa_password', 'VacaDiez2026'),
+            ('superadmin_password', 'ADMIN2026')
+        ]
+        for clave, valor in configs_globales:
+            db.session.add(ConfiguracionSuperadmin(clave=clave, valor=valor))
+
+        admin_default = PersonalAdministrativo(
+            ci="0000000",
+            apellidos="General",
+            nombres="Administrador",
+            cargo="Superadministrador",
+            usuario="admin",
+            correo="admin@vacadiez.edu",
+            contrasena_hash=generate_password_hash("admin2026"),
+            estado="Activo"
+        )
+        db.session.add(admin_default)
         db.session.commit()
 
         session.clear()
-        flash('El sistema se ha restablecido por completo a valores de fábrica.', 'success')
-        return redirect(url_for('auth.login'))
+        
+        response = make_response(redirect(url_for('auth.login')))
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        
+        return response
 
     except Exception as e:
         db.session.rollback()
-        flash(f'Error crítico al restablecer el sistema: {str(e)}', 'danger')
+        flash(f'❌ Error crítico al restablecer el sistema: {str(e)}', 'danger')
         return redirect(url_for('auth.login'))

@@ -57,23 +57,24 @@ def _obtener_clave(clave, valor_por_defecto='N/A'):
 
 @app.context_processor
 def inject_configuracion_institucional():
-    """
-    Inyector institucional genérico: Provee tanto 'configs' como el objeto 'institucion'
-    para garantizar compatibilidad total con base.html y todas las vistas.
-    """
+    """Inyector con validación de existencia física de logo."""
+    from flask import current_app
+    import os
+    
     config_dict = {
-        'institucion_linea1': 'INSTITUCIÓN EDUCATIVA',
-        'institucion_linea2': 'EDUCACIÓN Y EXCELENCIA',
-        'institucion_linea3': 'GESTIÓN ACADÉMICA',
-        'institucion_direccion': 'Ciudad, País',
-        'institucion_telefono': '000-0000',
-        'institucion_email': 'contacto@institucion.edu',
-        'institucion_ciudad': 'Ciudad',
+        'institucion_linea1': 'Sistema de Gestión Escolar',
+        'institucion_linea2': '',
+        'institucion_linea3': '',
+        'institucion_direccion': '',
+        'institucion_telefono': '',
+        'institucion_email': '',
+        'institucion_ciudad': '',
         'institucion_gestion': '2026',
-        'institucion_logo': 'uploads/logo_institucion.png'
+        'institucion_logo': ''
     }
     
     try:
+        from models import ConfiguracionSuperadmin
         registros = ConfiguracionSuperadmin.query.all()
         for reg in registros:
             if reg.clave in config_dict and reg.valor:
@@ -81,14 +82,27 @@ def inject_configuracion_institucional():
     except Exception:
         pass
 
-    logo_path = config_dict.get('institucion_logo', 'uploads/logo_institucion.png')
-    logo_url = url_for('static', filename=logo_path) if not logo_path.startswith('http') else logo_path
+    # Validación física estricta del logo (ELIMINA EL SALTO VISUAL)
+    logo_path = config_dict.get('institucion_logo', '')
+    logo_url = ''
+    if logo_path:
+        if logo_path.startswith('http'):
+            logo_url = logo_path
+        else:
+            try:
+                full_path = os.path.join(current_app.root_path, 'static', logo_path.split('?')[0])
+                if os.path.exists(full_path):
+                    timestamp = int(os.path.getmtime(full_path))
+                    logo_url = url_for('static', filename=logo_path.split('?')[0]) + f"?v={timestamp}"
+            except Exception:
+                pass
+
+    config_dict['institucion_logo'] = logo_url
     config_dict['institucion_logo_url'] = logo_url
 
-    # Retornamos todas las variantes posibles que los templates puedan invocar
     return {
         'configs': config_dict,
-        'institucion': config_dict,  # <-- Esto activará inmediatamente base.html
+        'institucion': config_dict,
         'institucion_linea1': config_dict['institucion_linea1'],
         'institucion_linea2': config_dict['institucion_linea2'],
         'institucion_linea3': config_dict['institucion_linea3'],
@@ -789,16 +803,41 @@ LOGIN_TEMPLATE = """
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-
-        clave_pwa = _obtener_clave('pwa_password', 'N/A')
-        clave_admin = _obtener_clave('superadmin_password', 'N/A')
         
-        # ... resto del código ...
+        # Autoinicialización de seguridad: Si no existe configuración ni admin, se crean por defecto
+        try:
+            from models import ConfiguracionInstitucion, PersonalAdministrativo
+            from werkzeug.security import generate_password_hash
+            
+            if not ConfiguracionInstitucion.query.first():
+                config_inicial = ConfiguracionInstitucion(
+                    institucion_linea1="Sistema de Gestión Escolar",
+                    institucion_linea2="Módulo Académico Institucional",
+                    institucion_logo="uploads/logo_institucion.png"
+                )
+                db.session.add(config_inicial)
+            
+            if not PersonalAdministrativo.query.filter_by(usuario="admin").first():
+                admin_default = PersonalAdministrativo(
+                    ci="0000000",
+                    apellidos="General",
+                    nombres="Administrador",
+                    cargo="Superadministrador",
+                    usuario="admin",
+                    correo="admin@institucion.edu",
+                    contrasena_hash=generate_password_hash("admin2026"),
+                    estado="Activo"
+                )
+                db.session.add(admin_default)
+            
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"⚠️ Aviso en autoinicialización: {e}")
 
         print("=" * 60)
-        print(f"🔐 CONTRASEÑA PWA ACTUAL: {clave_pwa}")
-        print(f"🔒 CONTRASEÑA SUPERADMIN: {clave_admin}")
-        print("   (Cámbielas desde la Bóveda Superadmin)")
+        print("🚀 Sistema de Gestión Escolar - Servidor Iniciado Correctamente")
+        print("👤 Credenciales de Acceso: admin / admin2026")
         print("=" * 60)
 
     ES_PRODUCCION = os.environ.get('FLASK_ENV') == 'production'

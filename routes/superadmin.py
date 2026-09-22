@@ -1686,9 +1686,9 @@ def configuracion_institucion():
             flash(f'❌ Error al guardar configuración institucional: {str(e)}', 'danger')
 
     valores_por_defecto = {
-        'institucion_linea1': 'INSTITUCIÓN EDUCATIVA',
-        'institucion_linea2': 'EDUCACIÓN Y EXCELENCIA',
-        'institucion_linea3': 'GESTIÓN ACADÉMICA',
+        'institucion_linea1': 'Institución Educativa',
+        'institucion_linea2': 'Educación y Excelencia',
+        'institucion_linea3': 'Gestión Académica',
         'institucion_direccion': 'Ciudad, País',
         'institucion_telefono': '000-0000',
         'institucion_email': 'contacto@institucion.edu',

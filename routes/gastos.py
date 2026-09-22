@@ -14,6 +14,12 @@ CATEGORIAS = [
   'Sueldos', 'Impuestos', 'Otros'
 ]
 
+# Extensiones permitidas para comprobantes (Imágenes, PDF, Word y Excel)
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx', 'xls', 'xlsx'}
+
+def archivo_permitido(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 @gastos_bp.route('/')
 def index():
@@ -69,11 +75,11 @@ def nuevo():
       if metodo_pago not in ['Efectivo', 'Bancario']:
         metodo_pago = 'Efectivo'
 
-      # Procesamiento de archivo adjunto (Comprobante / Factura)
+      # Procesamiento seguro de archivo adjunto (Comprobante / Factura / Documento)
       archivo_nombre = None
       if 'archivo' in request.files:
         archivo = request.files['archivo']
-        if archivo and archivo.filename != '':
+        if archivo and archivo.filename != '' and archivo_permitido(archivo.filename):
           filename = secure_filename(f"gasto_{datetime.now().strftime('%Y%m%d%H%M%S')}_{archivo.filename}")
           upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'gastos')
           os.makedirs(upload_folder, exist_ok=True)
@@ -88,7 +94,7 @@ def nuevo():
         proveedor=request.form.get('proveedor', ''),
         responsable=request.form.get('responsable', ''),
         metodo_pago=metodo_pago,
-        archivo=archivo_nombre  # Se guarda el nombre del archivo en la BD
+        archivo=archivo_nombre  # Guarda la ruta/nombre del archivo en la BD
       )
 
       db.session.add(nuevo_gasto)
@@ -127,10 +133,10 @@ def editar(id):
       gasto.responsable = request.form.get('responsable', '')
       gasto.metodo_pago = metodo_pago
 
-      # Actualizar archivo adjunto si se seleccionó uno nuevo
+      # Actualizar archivo adjunto si se seleccionó uno nuevo y válido
       if 'archivo' in request.files:
         archivo = request.files['archivo']
-        if archivo and archivo.filename != '':
+        if archivo and archivo.filename != '' and archivo_permitido(archivo.filename):
           filename = secure_filename(f"gasto_{id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{archivo.filename}")
           upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'gastos')
           os.makedirs(upload_folder, exist_ok=True)

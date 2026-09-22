@@ -44,8 +44,22 @@
 <body>
 <div class="login-card">
     <div class="card-header-custom">
-        <i class="bi bi-mortarboard-fill fs-1 d-block mb-2"></i>
-        <h1 class="h4 text-white fw-bold">{{ institucion.institucion_linea1 if institucion else 'Sistema de Gestión Escolar' }}</h1>
+        <!-- Logotipo institucional inteligente: Muestra el icono vectorial por defecto o la imagen personalizada si existe -->
+        <div class="mb-3">
+            {% set logo_val = institucion.institucion_logo if institucion else '' %}
+            {% if logo_val and logo_val != 'uploads/logo_institucion.png' %}
+                <img src="{{ url_for('static', filename=logo_val) }}" alt="Logo Institucional" style="max-height: 70px; object-fit: contain;" class="bg-white p-1 rounded shadow-sm">
+            {% else %}
+                <!-- Icono vectorial elegante por defecto (Birrete / Escudo Académico) -->
+                <div class="d-inline-flex align-items-center justify-content-center bg-white text-primary rounded-circle shadow-sm" style="width: 75px; height: 75px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-mortarboard-fill" viewBox="0 0 16 16">
+                        <path d="M8.211 2.047a.5.5 0 0 0-.422 0l-7.5 3.5a.5.5 0 0 0 .025.917l7.5 3a.5.5 0 0 0 .372 0L14 6.5V13a.5.5 0 0 0 1 0V6.018l.507-.224a.5.5 0 0 0 .025-.917l-7.5-3.5Z"/>
+                        <path d="M4.176 9.032a.5.5 0 0 0-.656.327l-.5 1.7a.5.5 0 0 0 .294.605l4.5 1.8a.5.5 0 0 0 .372 0l4.5-1.8a.5.5 0 0 0 .294-.605l-.5-1.7a.5.5 0 0 0-.656-.327L8 10.43 4.176 9.032Z"/>
+                    </svg>
+                </div>
+            {% endif %}
+        </div>
+        <h1 class="h4 text-white fw-bold mb-1">{{ institucion.institucion_linea1 if institucion else 'Sistema de Gestión Escolar' }}</h1>
         <p class="text-white-50 small mb-0">{{ institucion.institucion_linea2 if institucion else '' }}</p>
     </div>
     <div class="card-body p-4">
