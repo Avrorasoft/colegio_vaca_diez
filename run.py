@@ -18,11 +18,6 @@ import webbrowser
 from app import create_app
 from models import db
 
-# ⭐ Importar los Blueprints de la aplicación
-from routes.auth import auth_bp
-from routes.pagos import pagos_bp
-from routes.reportes import reportes_bp
-
 
 def get_port():
     try:
@@ -48,11 +43,6 @@ def main():
     url = f'http://127.0.0.1:{port}/'
 
     app = create_app()
-
-    # ⭐ Registrar los Blueprints en la instancia de la aplicación
-    app.register_blueprint(auth_bp)
-    #app.register_blueprint(pagos_bp)
-    app.register_blueprint(reportes_bp)
 
     # Crear tablas si no existen
     with app.app_context():

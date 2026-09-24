@@ -74,7 +74,7 @@
         <nav id="sidebarPadres">
             <div class="sidebar-brand">
                 {% if institucion and institucion.get('institucion_logo') %}
-                <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-img">
+                <img src="{{ institucion.institucion_logo_url }}" alt="Logo" class="logo-img">
                 {% endif %}
                 <h5>{{ institucion.get('institucion_linea1', 'Colegio') if institucion else 'Colegio' }}</h5>
                 {% if institucion and institucion.get('institucion_linea2') %}
@@ -114,7 +114,7 @@
                         <i class="bi bi-list"></i>
                     </button>
                     {% if institucion and institucion.get('institucion_logo') %}
-                    <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-mini">
+                    <img src="{{ institucion.institucion_logo_url }}" alt="Logo" class="logo-img">
                     {% endif %}
                     <h5 class="mb-0">{% block page_title %}Portal de Padres{% endblock %}</h5>
                 </div>

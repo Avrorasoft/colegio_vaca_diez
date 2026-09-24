@@ -95,11 +95,13 @@
                                 <a href="{{ url_for('gastos.comprobante_gasto', gasto_id=g.id) }}" class="btn btn-outline-secondary" title="Imprimir Comprobante" target="_blank"><i class="bi bi-printer"></i></a>
                                 
                                 <!-- Ícono directo para ver el archivo adjunto -->
-                                {% if g.archivo %}
-                                <a href="{{ url_for('static', filename='uploads/gastos/' + g.archivo) }}" class="btn btn-outline-info" title="Ver Comprobante Adjunto" target="_blank">
-                                    <i class="bi bi-paperclip"></i>
-                                </a>
-                                {% endif %}
+                                <!-- Ícono directo para ver el archivo adjunto (Ruta Blindada) -->
+								{% if g.archivo %}
+								{% set nombre_archivo_limpio = g.archivo.replace('\\', '/').split('/')[-1] %}
+								<a href="{{ url_for('static', filename='uploads/gastos/' + nombre_archivo_limpio) }}" class="btn btn-outline-info" title="Ver Comprobante Adjunto" target="_blank">
+									<i class="bi bi-paperclip"></i>
+								</a>
+								{% endif %}
 
                                 {% set es_super = session.get('es_superadmin') or session.get('rol') == 'superadmin' %}
                                 {% if es_super %}
@@ -146,4 +148,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
+{% endblock %} 

@@ -547,19 +547,19 @@
 
     <div class="wrapper">
 
-        <!-- =============================================================== -->
+       <!-- =============================================================== -->
         <!-- MENÚ LATERAL SIN GRUPOS (COMPACTO) -->
         <!-- =============================================================== -->
 
         <nav id="sidebar">
             <!-- LOGO Y NOMBRE DE LA INSTITUCIÓN -->
-            <div class="sidebar-brand">
-                {% set logo = institucion.get('institucion_logo') if institucion and institucion.get else (institucion.institucion_logo if institucion and institucion.institucion_logo else '') %}
-                {% if logo %}
-                <!-- SANITIZADOR DE LOGO (Previene Error 404) -->
-                {% set clean_logo = logo.replace('/static/', '').replace('static/', '').split('?')[0] %}
-                <img src="{{ url_for('static', filename=clean_logo) }}" alt="Logo" class="logo-img">
-                {% endif %}
+            <div class="sidebar-brand text-center">
+                <!-- LOGO ESTABILIZADO (Sin pestañeos molestos) -->
+                <img src="{{ url_for('superadmin.ver_logo_institucion') }}?v={{ nombre_logo }}" 
+                     alt="Logo" 
+                     style="width: 90px; height: 90px; object-fit: contain; margin-bottom: 10px;" 
+                     class="bg-white rounded p-1 shadow-sm"
+                     id="logo-institucional-fijo">
 
                 <h5>
                     {% if institucion %}
@@ -569,20 +569,20 @@
                     {% endif %}
                 </h5>
 
-                {% set linea2 = institucion.get('institucion_linea2') if institucion and institucion.get else (institucion.institucion_linea2 if institucion and institucion.institucion_linea2 else '') %}
+                {% set linea2 = institucion.get('institucion_linea2') if institucion and institucion.get else (institucion.institucion_linea2 if institucion.institucion_linea2 else '') %}
                 {% if linea2 %}
                 <div style="font-size: 11px; color: #94a3b8; line-height: 1.1;">
                     {{ linea2 }}
                 </div>
                 {% endif %}
 
-                {% set linea3 = institucion.get('institucion_linea3') if institucion and institucion.get else (institucion.institucion_linea3 if institucion and institucion.institucion_linea3 else '') %}
+                {% set linea3 = institucion.get('institucion_linea3') if institucion and institucion.get else (institucion.institucion_linea3 if institucion.institucion_linea3 else '') %}
                 {% if linea3 %}
                 <div style="font-size: 10px; color: #64748b; line-height: 1.1;">
                     {{ linea3 }}
                 </div>
                 {% endif %}
-                <small>Avrora Soft - Vibola LLC</small>
+                <small class="d-block mt-2">Avrora Soft - Vibola LLC</small>
             </div>
 
             <!-- ⭐ MENÚ COMPACTO SIN ETIQUETAS DE GRUPO -->
@@ -714,21 +714,16 @@
                         <i class="bi bi-list"></i>
                     </button>
 
-                    <!-- LOGO MINI EN LA TOPBAR -->
-                    {% if institucion and institucion.get('institucion_logo') %}
-                    <!-- SANITIZADOR DE LOGO (Previene Error 404) -->
-                    {% set clean_logo_mini = institucion['institucion_logo'].replace('/static/', '').split('?')[0] %}
-                    <img src="{{ url_for('static', filename=clean_logo_mini) }}" alt="Logo" class="logo-mini">
-                    {% endif %}
+                    <!-- LOGO MINI EN LA TOPBAR (Forzado a crecer) -->
+<img src="{{ url_for('superadmin.ver_logo_institucion') }}?v={{ nombre_logo }}" 
+     alt="Logo" 
+     class="bg-white rounded-circle p-1 shadow-sm" 
+     style="width: 60px !important; height: 60px !important; min-width: 60px !important; min-height: 60px !important; max-height: none !important; object-fit: contain;">
 
                     <h5 class="mb-0">
-                        {% block page_title %}
-                        {% if institucion and institucion.get('institucion_linea1') %}
-                            {{ institucion.get('institucion_linea1') }}
-                        {% else %}
-                            Sistema de Gestión Escolar
-                        {% endif %}
-                        {% endblock %}
+                    {% block page_title %}
+                        {{ institucion.get('institucion_linea1', 'Sistema de Gestión Escolar') if institucion else 'Sistema de Gestión Escolar' }}
+                    {% endblock %}
                     </h5>
                 </div>
 

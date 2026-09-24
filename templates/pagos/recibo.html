@@ -120,7 +120,7 @@
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div class="d-flex align-items-center gap-3">
                 {% if institucion and institucion.get('institucion_logo') %}
-                <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="receipt-logo">
+                <img src="{{ institucion.institucion_logo_url }}" alt="Logo" class="receipt-logo">
                 {% endif %}
                 <div>
                     <h3 class="receipt-title text-uppercase mb-1">

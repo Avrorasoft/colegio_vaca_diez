@@ -10,9 +10,9 @@
             <div class="card-header bg-dark text-white text-center py-4 border-0">
                 <div class="mb-3">
                     {% set logo_val = institucion.institucion_logo if institucion else '' %}
-                    {% if logo_val and logo_val != 'uploads/logo_institucion.png' and logo_val != '' %}
+                    {% if institucion.institucion_logo_url %}
                         <!-- Logo real cargado por el usuario -->
-                        <img src="{{ url_for('static', filename=logo_val) }}" alt="Logo Institucional" style="max-height: 80px; object-fit: contain;" class="bg-white p-1 rounded shadow-sm">
+                        <img src="{{ institucion.institucion_logo_url }}" alt="Logo Institucional" style="max-height: 70px; object-fit: contain;" class="bg-white p-1 rounded shadow-sm">
                     {% else %}
                         <!-- Icono vectorial por defecto (Birrete Académico) cuando hay reseteo -->
                         <div class="d-inline-flex align-items-center justify-content-center bg-white text-primary rounded-circle shadow-sm" style="width: 80px; height: 80px;">

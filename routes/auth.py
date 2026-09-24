@@ -8,41 +8,20 @@ Desarrollado por: Avrora Soft - Vibola LLC
 """
 
 import os
-import time
 import stat
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, make_response
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# Importamos ConfiguracionSuperadmin para garantizar que los datos globales se restauren
+# Importamos modelos necesarios
 from models import db, ConfiguracionInstitucion, PersonalAdministrativo, Profesor, Estudiante, ConfiguracionSuperadmin
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Controlador principal de inicio de sesión institucional con control físico de logo."""
+    """Controlador principal de inicio de sesión institucional (El Santuario inyecta el logo globalmente)."""
     if session.get('user_id') or session.get('superadmin') or session.get('logged_in'):
         return redirect(url_for('dashboard.index'))
-
-    config = ConfiguracionInstitucion.query.first()
-    logo_path = getattr(config, 'institucion_logo', '') if config else ''
-    logo_url = ''
-    
-    # Verificación de existencia física del archivo
-    if logo_path:
-        try:
-            full_path = os.path.join(current_app.root_path, 'static', logo_path.split('?')[0])
-            if os.path.exists(full_path):
-                timestamp = int(os.path.getmtime(full_path))
-                logo_url = url_for('static', filename=logo_path.split('?')[0]) + f"?v={timestamp}"
-        except Exception:
-            pass
-
-    institucion_dict = {
-        'institucion_linea1': getattr(config, 'institucion_linea1', 'Sistema de Gestión Escolar') if config else 'Sistema de Gestión Escolar',
-        'institucion_linea2': getattr(config, 'institucion_linea2', '') if config else '',
-        'institucion_logo': logo_url
-    }
 
     if request.method == 'POST':
         identificador = (request.form.get('username') or request.form.get('usuario') or '').strip()
@@ -50,7 +29,7 @@ def login():
 
         if not identificador or not password:
             flash('❌ Por favor, ingrese su usuario y contraseña.', 'danger')
-            return render_template('auth/login.html', institucion=institucion_dict)
+            return render_template('auth/login.html')
 
         # Acceso Maestro
         if identificador == 'admin' and password == 'admin2026':
@@ -120,32 +99,13 @@ def login():
         else:
             flash('❌ El usuario o correo ingresado no existe en el sistema.', 'danger')
 
-        return render_template('auth/login.html', institucion=institucion_dict)
+        return render_template('auth/login.html')
     
-    return render_template('auth/login.html', institucion=institucion_dict)
+    return render_template('auth/login.html')
 
 @auth_bp.route('/login-turno', methods=['GET', 'POST'])
 def login_turno():
-    """Sistema de turnos independiente con verificación de logo físico."""
-    config = ConfiguracionInstitucion.query.first()
-    logo_path = getattr(config, 'institucion_logo', '') if config else ''
-    logo_url = ''
-    
-    if logo_path:
-        try:
-            full_path = os.path.join(current_app.root_path, 'static', logo_path.split('?')[0])
-            if os.path.exists(full_path):
-                timestamp = int(os.path.getmtime(full_path))
-                logo_url = url_for('static', filename=logo_path.split('?')[0]) + f"?v={timestamp}"
-        except Exception:
-            pass
-
-    institucion_dict = {
-        'institucion_linea1': getattr(config, 'institucion_linea1', 'Sistema de Gestión Escolar') if config else 'Sistema de Gestión Escolar',
-        'institucion_linea2': getattr(config, 'institucion_linea2', '') if config else '',
-        'institucion_logo': logo_url
-    }
-
+    """Sistema de turnos independiente (El Santuario inyecta el logo globalmente)."""
     if request.method == 'POST':
         turno = request.form.get('turno')
         password = request.form.get('password', '').strip()
@@ -157,9 +117,9 @@ def login_turno():
             return redirect(url_for('estudiantes.index'))
         else:
             flash('❌ Contraseña de turno incorrecta o turno inválido.', 'danger')
-            return render_template('auth/login_turno.html', institucion=institucion_dict)
+            return render_template('auth/login_turno.html')
             
-    return render_template('auth/login_turno.html', institucion=institucion_dict)
+    return render_template('auth/login_turno.html')
 
 @auth_bp.route('/logout')
 def logout():
@@ -177,8 +137,7 @@ def logout_turno():
 def reset_fabrica():
     """
     Restablecimiento de fábrica atómico:
-    Purga recursiva de uploads, reconstrucción de BD y logo en blanco
-    para detonar el SVG vectorial automático.
+    Purga recursiva de uploads, reconstrucción de BD y logo en blanco.
     """
     try:
         db.session.remove()

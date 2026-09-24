@@ -2,13 +2,14 @@
 """
 ==============================================================================
 Archivo: app.py
-Proyecto: ASestud-Konetz - Sistema de Gestión Escolar
-Basado en: Colegio Dr. Antonio Vaca Díez
+Proyecto: ASestud-Konetz - Sistema de Gestion Escolar
 Desarrollado por: Avrora Soft - Vibola LLC
 ==============================================================================
 """
 
 import os
+import sys
+import webbrowser
 import secrets
 import string
 from datetime import datetime, timezone, timedelta, date
@@ -16,15 +17,21 @@ from functools import wraps
 
 from flask import (
     Flask, redirect, url_for, jsonify, request, session,
-    render_template, render_template_string, flash
+    render_template, render_template_string, flash, send_from_directory
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.utils import secure_filename
+
+# ==============================================================================
+# AUDITORIA FASE 1: IMPORTAR GESTOR DE RUTAS BLINDADAS (%APPDATA%)
+# ==============================================================================
+from config_paths import BASE_DIR, APPDATA_DIR, DB_PATH, UPLOAD_FOLDER
 
 from models import db, Estudiante, ConfiguracionSuperadmin
 from config import Config
 from routes.auth import auth_bp
 from utils_backup import realizar_respaldo_db
+from validador_licencia import comprobar_licencia_local
 
 # Zona horaria Bolivia (UTC-4)
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
@@ -33,10 +40,19 @@ app = Flask(__name__)
 # Optimizacion de cache para activos estaticos
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
+# ==============================================================================
+# CONFIGURACION ROBUSTA (PERSISTENTE EN %APPDATA%)
+# ==============================================================================
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
 @app.context_processor
 def inject_now():
     return {'now': datetime.now}
+    
 app.config.from_object(Config)
+
+# FORZAR LA BASE DE DATOS HACIA EL DIRECTORIO BLINDADO
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
 
 db.init_app(app)
 csrf = CSRFProtect(app)
@@ -46,7 +62,7 @@ with app.app_context():
     realizar_respaldo_db()
 
 def _obtener_clave(clave, valor_por_defecto='N/A'):
-    """Función auxiliar segura para recuperar valores de configuración."""
+    """Funcion auxiliar segura para recuperar valores de configuracion."""
     try:
         config = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
         if config and hasattr(config, 'valor') and config.valor:
@@ -57,12 +73,11 @@ def _obtener_clave(clave, valor_por_defecto='N/A'):
 
 @app.context_processor
 def inject_configuracion_institucional():
-    """Inyector con validación de existencia física de logo."""
-    from flask import current_app
-    import os
+    """Inyector optimizado con tunel directo a la imagen fisica en APPDATA."""
+    import time
     
     config_dict = {
-        'institucion_linea1': 'Sistema de Gestión Escolar',
+        'institucion_linea1': 'Sistema de Gestion Escolar',
         'institucion_linea2': '',
         'institucion_linea3': '',
         'institucion_direccion': '',
@@ -70,7 +85,7 @@ def inject_configuracion_institucional():
         'institucion_email': '',
         'institucion_ciudad': '',
         'institucion_gestion': '2026',
-        'institucion_logo': ''
+        'institucion_logo': 'logo_institucion.png'
     }
     
     try:
@@ -78,41 +93,35 @@ def inject_configuracion_institucional():
         registros = ConfiguracionSuperadmin.query.all()
         for reg in registros:
             if reg.clave in config_dict and reg.valor:
-                config_dict[reg.clave] = reg.valor
+                config_dict[reg.clave] = str(reg.valor).strip()
     except Exception:
         pass
 
-    # Validación física estricta del logo (ELIMINA EL SALTO VISUAL)
-    logo_path = config_dict.get('institucion_logo', '')
-    logo_url = ''
-    if logo_path:
-        if logo_path.startswith('http'):
-            logo_url = logo_path
-        else:
-            try:
-                full_path = os.path.join(current_app.root_path, 'static', logo_path.split('?')[0])
-                if os.path.exists(full_path):
-                    timestamp = int(os.path.getmtime(full_path))
-                    logo_url = url_for('static', filename=logo_path.split('?')[0]) + f"?v={timestamp}"
-            except Exception:
-                pass
+    # 1. Extraer nombre real de la base de datos limpiamente
+    nombre_logo = config_dict['institucion_logo'].replace('\\', '/').split('?')[0].split('/')[-1]
+    
+    # 2. Utilizar el tunel infalible para TODO el sistema (Navbar, PDFs, etc.)
+    logo_url = f"/superadmin/ver_logo_institucion?v={nombre_logo}"
 
-    config_dict['institucion_logo'] = logo_url
     config_dict['institucion_logo_url'] = logo_url
+    config_dict['nombre_logo'] = nombre_logo
 
     return {
         'configs': config_dict,
+        'config': config_dict,
         'institucion': config_dict,
-        'institucion_linea1': config_dict['institucion_linea1'],
-        'institucion_linea2': config_dict['institucion_linea2'],
-        'institucion_linea3': config_dict['institucion_linea3'],
-        'institucion_direccion': config_dict['institucion_direccion'],
-        'institucion_telefono': config_dict['institucion_telefono'],
-        'institucion_email': config_dict['institucion_email'],
-        'institucion_ciudad': config_dict['institucion_ciudad'],
-        'institucion_gestion': config_dict['institucion_gestion'],
+        'nombre_logo': nombre_logo,
         'institucion_logo_url': logo_url
     }
+
+@app.route('/uploads/<path:filename>')
+def servir_archivo_subido(filename):
+    """Entrega fotos y PDFs respetando la boveda segura en APPDATA."""
+    import os
+    from flask import send_from_directory
+    nombre_limpio = filename.replace('\\', '/')
+    return send_from_directory(app.config['UPLOAD_FOLDER'], nombre_limpio)
+
 # ==============================================================================
 # BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
 # ==============================================================================
@@ -127,135 +136,79 @@ def bloquear_transacciones_sin_turno():
         es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
         
         if not turno_activo and not es_superadmin:
-            flash('❌ Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
+            flash('Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
             try:
                 return redirect(url_for('dashboard.index'))
             except Exception:
                 return redirect('/')
 
 # ==============================================================================
-# REGISTRO DE BLUEPRINTS
+# REGISTRO DE BLUEPRINTS (Sin silenciadores de errores)
 # ==============================================================================
 
-try:
-    from routes.auth import auth_bp
-    csrf.exempt(auth_bp)
-    app.register_blueprint(auth_bp)
-except Exception as e:
-    print(f"❌ Error auth: {e}")
+from routes.auth import auth_bp
+csrf.exempt(auth_bp)
+app.register_blueprint(auth_bp)
 
-try:
-    from routes.dashboard import dashboard_bp
-    app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
-except Exception as e:
-    print(f"❌ Error dashboard: {e}")
+from routes.dashboard import dashboard_bp
+app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
 
-try:
-    from routes.estudiantes import estudiantes_bp
-    app.register_blueprint(estudiantes_bp, url_prefix='/estudiantes')
-except Exception as e:
-    print(f"❌ Error estudiantes: {e}")
+from routes.estudiantes import estudiantes_bp
+app.register_blueprint(estudiantes_bp, url_prefix='/estudiantes')
 
-try:
-    from routes.personal import personal_bp
-    app.register_blueprint(personal_bp, url_prefix='/personal')
-except Exception as e:
-    print(f"❌ Error personal: {e}")
+from routes.personal import personal_bp
+app.register_blueprint(personal_bp, url_prefix='/personal')
 
-try:
-    from routes.calificaciones import calificaciones_bp
-    app.register_blueprint(calificaciones_bp, url_prefix='/calificaciones')
-except Exception as e:
-    print(f"❌ Error calificaciones: {e}")
+from routes.calificaciones import calificaciones_bp
+app.register_blueprint(calificaciones_bp, url_prefix='/calificaciones')
 
-try:
-    from routes.caja import caja_bp
-    app.register_blueprint(caja_bp, url_prefix='/caja')
-except Exception as e:
-    print(f"❌ Error caja: {e}")
+from routes.caja import caja_bp
+app.register_blueprint(caja_bp, url_prefix='/caja')
 
-try:
-    from routes.gastos import gastos_bp
-    app.register_blueprint(gastos_bp, url_prefix='/gastos')
-except Exception as e:
-    print(f"❌ Error gastos: {e}")
+from routes.gastos import gastos_bp
+app.register_blueprint(gastos_bp, url_prefix='/gastos')
 
-try:
-    from routes.mensajes import mensajes_bp
-    app.register_blueprint(mensajes_bp, url_prefix='/mensajes')
-except Exception as e:
-    print(f"❌ Error mensajes: {e}")
+from routes.mensajes import mensajes_bp
+app.register_blueprint(mensajes_bp, url_prefix='/mensajes')
 
-try:
-    from routes.chat import chat_bp
-    app.register_blueprint(chat_bp, url_prefix='/chat')
-except Exception as e:
-    print(f"❌ Error chat: {e}")
+from routes.chat import chat_bp
+app.register_blueprint(chat_bp, url_prefix='/chat')
 
-try:
-    from routes.archivos import archivos_bp
-    app.register_blueprint(archivos_bp, url_prefix='/archivos')
-except Exception as e:
-    print(f"❌ Error archivos: {e}")
+from routes.archivos import archivos_bp
+app.register_blueprint(archivos_bp, url_prefix='/archivos')
 
-try:
-    from routes.profesores_portal import profesores_portal_bp
-    csrf.exempt(profesores_portal_bp)
-    app.register_blueprint(profesores_portal_bp, url_prefix='/profesor-portal')
-except Exception as e:
-    print(f"❌ Error portal profesores: {e}")
+from routes.profesores_portal import profesores_portal_bp
+csrf.exempt(profesores_portal_bp)
+app.register_blueprint(profesores_portal_bp, url_prefix='/profesor-portal')
 
-try:
-    from routes.faltas import faltas_bp
-    app.register_blueprint(faltas_bp, url_prefix='/faltas')
-except Exception as e:
-    print(f"❌ Error faltas: {e}")
+from routes.faltas import faltas_bp
+app.register_blueprint(faltas_bp, url_prefix='/faltas')
 
-try:
-    from routes.pagos import pagos_bp
-    app.register_blueprint(pagos_bp, url_prefix='/pagos')
-except Exception as e:
-    print(f"❌ Error pagos: {e}")
+from routes.pagos import pagos_bp
+app.register_blueprint(pagos_bp, url_prefix='/pagos')
 
-try:
-    from routes.portal_padres import portal_padres_bp
-    app.register_blueprint(portal_padres_bp, url_prefix='/portal-padres')
-except Exception as e:
-    print(f"❌ Error portal padres: {e}")
+from routes.portal_padres import portal_padres_bp
+app.register_blueprint(portal_padres_bp, url_prefix='/portal-padres')
 
-try:
-    from routes.superadmin import superadmin_bp
-    app.register_blueprint(superadmin_bp, url_prefix='/superadmin')
-except Exception as e:
-    print(f"❌ Error superadmin: {e}")
+from routes.superadmin import superadmin_bp
+app.register_blueprint(superadmin_bp, url_prefix='/superadmin')
 
-try:
-    from routes.superadmin_api import superadmin_api_bp
-    app.register_blueprint(superadmin_api_bp)
-except Exception as e:
-    print(f"❌ Error superadmin_api: {e}")
+from routes.superadmin_api import superadmin_api_bp
+app.register_blueprint(superadmin_api_bp)
 
-try:
-    from routes.pwa import pwa_bp
-    app.register_blueprint(pwa_bp, url_prefix='/pwa')
-except Exception as e:
-    print(f"❌ Error PWA padres: {e}")
+from routes.pwa import pwa_bp
+app.register_blueprint(pwa_bp, url_prefix='/pwa')
 
-try:
-    from routes.reportes import reportes_bp
-    app.register_blueprint(reportes_bp, url_prefix='/reportes')
-except Exception as e:
-    print(f"❌ Error reportes: {e}")
+from routes.reportes import reportes_bp
+app.register_blueprint(reportes_bp, url_prefix='/reportes')
 
-try:
-    from routes.rubricas import rubricas_bp
-    app.register_blueprint(rubricas_bp, url_prefix='/admin/rubricas')
-except Exception as e:
-    print(f"❌ Error rubricas: {e}")
+from routes.rubricas import rubricas_bp
+app.register_blueprint(rubricas_bp, url_prefix='/admin/rubricas')
+
 
 @app.route('/')
 def index():
-    # Si hay una sesión activa, entra al dashboard. Si no, va al login de turno.
+    # Si hay una sesion activa, entra al dashboard. Si no, va al login de turno.
     if '_user_id' in session or 'usuario_id' in session or 'rol' in session:
         return redirect(url_for('dashboard.index'))
     return redirect(url_for('auth.login_turno'))
@@ -266,215 +219,9 @@ def redirect_login_raiz():
     from flask import redirect, url_for
     return redirect(url_for('auth.login_turno'))
 
-# ==============================================================================
-# AQUÍ ABAJO DEBE CONTINUAR TU CÓDIGO (SECRET_KEY, BLOQUEOS, ETC.)
-# ¡Asegúrate de haber borrado el "if __name__ == '__main__':" con el app.run() de aquí!
-# ==============================================================================
-
-    # ==============================================================================
-    # SECRET_KEY segura y persistente
-    # ==============================================================================
-    if not app.config.get('SECRET_KEY') or app.config.get('SECRET_KEY') == 'dev':
-        ruta_key = os.path.join(os.getcwd(), '.secret_key')
-        if os.path.exists(ruta_key):
-            with open(ruta_key, 'r') as f:
-                app.config['SECRET_KEY'] = f.read().strip()
-        else:
-            nueva_key = secrets.token_hex(32)
-            with open(ruta_key, 'w') as f:
-                f.write(nueva_key)
-            app.config['SECRET_KEY'] = nueva_key
-
-    # ==============================================================================
-    # BLOQUEO GLOBAL DE TRANSACCIONES SIN TURNO ACTIVO
-    # ==============================================================================
-    @app.before_request
-    def bloquear_transacciones_sin_turno():
-        path = request.path.lower()
-        es_financiera = any(term in path for term in ['pago', 'pagar', 'cardex', 'cobro'])
-        
-        if es_financiera and request.method == 'POST':
-            turno_activo = session.get('turno') or session.get('turno_activo')
-            es_superadmin = session.get('es_superadmin') or session.get('rol') == 'superadmin'
-            
-            if not turno_activo and not es_superadmin:
-                flash('❌ Acceso denegado: Se requiere un Turno de caja activo para realizar transacciones.', 'danger')
-                try:
-                    return redirect(url_for('dashboard.index'))
-                except Exception:
-                    return redirect('/')
-
-    # =========================================================================
-    # PROTECCIÓN CSRF GLOBAL
-    # =========================================================================
-    csrf = CSRFProtect(app)
-
-    # =========================================================================
-    # INICIALIZAR BASE DE DATOS Y CLAVES
-    # =========================================================================
-    
-    with app.app_context():
-        db.create_all()
-        _obtener_clave('pwa_password', _generar_password())
-        _obtener_clave('superadmin_password', 'ADMIN2026')
-
-    # =========================================================================
-    # PROTECCIÓN GLOBAL CON CONTRASEÑA + VERIFICACIÓN DE CONFIGURACIÓN
-    # =========================================================================
-
-    @app.before_request
-    def proteger_acceso_global():
-        """Protege TODA la aplicación con contraseña y verifica configuración."""
-        rutas_excluidas = [
-            'static',
-            'login_pwa',
-            'logout_pwa',
-            'setup',  # ⭐ Ruta de configuración inicial
-            'api_estudiantes_por_curso',
-            'portal_padres.',
-            'auth.',
-            'pwa.',
-        ]
-
-        endpoint = request.endpoint or ''
-
-        for excluida in rutas_excluidas:
-            if excluida in endpoint or request.path.startswith('/static'):
-                return None
-
-        # ⭐ VERIFICAR SI LA INSTITUCIÓN ESTÁ CONFIGURADA
-        if not _esta_configurado():
-            return redirect(url_for('setup'))
-
-        if session.get('pwa_autenticado'):
-            return None
-
-        return redirect(url_for('login_pwa'))
-
-    # =========================================================================
-    # ASISTENTE DE CONFIGURACIÓN INICIAL
-    # =========================================================================
-
-    @app.route('/setup', methods=['GET', 'POST'])
-    def setup():
-        """Formulario de configuración inicial de la institución."""
-        
-        # Si ya está configurado, redirigir al login
-        if _esta_configurado():
-            return redirect(url_for('login_pwa'))
-        
-        if request.method == 'POST':
-            try:
-                # Obtener datos del formulario
-                linea1 = request.form.get('linea1', '').strip()
-                linea2 = request.form.get('linea2', '').strip()
-                linea3 = request.form.get('linea3', '').strip()
-                direccion = request.form.get('direccion', '').strip()
-                telefono = request.form.get('telefono', '').strip()
-                email = request.form.get('email', '').strip()
-                ciudad = request.form.get('ciudad', '').strip()
-                gestion = request.form.get('gestion', str(datetime.now().year)).strip()
-                password_pwa = request.form.get('password_pwa', '').strip()
-                password_admin = request.form.get('password_admin', '').strip()
-                
-                # Validaciones básicas
-                if not linea1:
-                    flash('❌ El nombre de la institución (línea 1) es obligatorio.', 'danger')
-                    return render_template_string(SETUP_TEMPLATE)
-                
-                if not password_pwa or len(password_pwa) < 6:
-                    flash('❌ La contraseña PWA debe tener al menos 6 caracteres.', 'danger')
-                    return render_template_string(SETUP_TEMPLATE)
-                
-                if not password_admin or len(password_admin) < 6:
-                    flash('❌ La contraseña Superadmin debe tener al menos 6 caracteres.', 'danger')
-                    return render_template_string(SETUP_TEMPLATE)
-                
-                # Guardar configuración
-                _set_clave('institucion_linea1', linea1)
-                _set_clave('institucion_linea2', linea2)
-                _set_clave('institucion_linea3', linea3)
-                _set_clave('institucion_direccion', direccion)
-                _set_clave('institucion_telefono', telefono)
-                _set_clave('institucion_email', email)
-                _set_clave('institucion_ciudad', ciudad)
-                _set_clave('institucion_gestion', gestion)
-                
-                # Procesar logo si se subió
-                if 'logo' in request.files:
-                    logo_file = request.files['logo']
-                    if logo_file and logo_file.filename != '':
-                        filename = secure_filename(logo_file.filename)
-                        # Guardar con nombre fijo para facilitar referencia
-                        ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'png'
-                        logo_filename = f'logo_institucion.{ext}'
-                        
-                        # Crear carpeta si no existe
-                        upload_folder = os.path.join(app.static_folder, 'uploads')
-                        os.makedirs(upload_folder, exist_ok=True)
-                        
-                        logo_path = os.path.join(upload_folder, logo_filename)
-                        logo_file.save(logo_path)
-                        
-                        _set_clave('institucion_logo', f'uploads/{logo_filename}')
-                    else:
-                        _set_clave('institucion_logo', '')
-                else:
-                    _set_clave('institucion_logo', '')
-                
-                # Guardar contraseñas
-                _set_clave('pwa_password', password_pwa)
-                _set_clave('superadmin_password', password_admin)
-                
-                # Marcar como configurado
-                _set_clave('institucion_configurada', 'true')
-                
-                flash('✅ Configuración completada exitosamente. Ahora puede iniciar sesión.', 'success')
-                return redirect(url_for('login_pwa'))
-                
-            except Exception as e:
-                flash(f'❌ Error al guardar la configuración: {str(e)}', 'danger')
-                return render_template_string(SETUP_TEMPLATE)
-        
-        return render_template_string(SETUP_TEMPLATE)
-
-    # Eximir setup del CSRF (usa render_template_string)
-    csrf.exempt(setup)
-
-    # =========================================================================
-    # PANTALLA DE LOGIN PWA
-    # =========================================================================
-
-    @app.route('/login', methods=['GET', 'POST'])
-    @rate_limit(max_intentos=5, ventana_segundos=300)
-    def login_pwa():
-        """Pantalla de contraseña para acceder a la PWA."""
-        error = None
-
-        if request.method == 'POST':
-            password = request.form.get('password', '').strip()
-            clave_pwa = _obtener_clave('pwa_password', 'VacaDiez2026')
-
-            if password == clave_pwa:
-                session['pwa_autenticado'] = True
-                session['pwa_login_time'] = datetime.now().isoformat()
-                session.permanent = False
-                siguiente = request.args.get('next', url_for('dashboard.index'))
-                return redirect(siguiente)
-            else:
-                error = 'Contraseña incorrecta'
-
-        # Obtener configuración para mostrar en el login
-        config = _obtener_configuracion_institucion()
-        nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestión Escolar')
-
-        return render_template_string(LOGIN_TEMPLATE, error=error, 
-                                     nombre_institucion=nombre_institucion,
-                                     config=config)
-
 @app.route('/logout')
 def global_logout():
-    """Cierra cualquier sesión activa y redirige al login."""
+    """Cierra cualquier sesion activa y redirige al login."""
     session.clear()
     try:
         from flask_login import logout_user
@@ -485,8 +232,188 @@ def global_logout():
         return redirect(url_for('auth.login_turno'))
     except Exception:
         return redirect('/')
+
 # ==============================================================================
-# PLANTILLA DE CONFIGURACIÓN INICIAL
+# SECRET_KEY segura y persistente para evitar errores CSRF en PyInstaller
+# ==============================================================================
+app.config['SECRET_KEY'] = 'AvroraSoft_Vibola_LLC_2026_ClaveSegura_ASestud'
+
+# =========================================================================
+# INICIALIZAR BASE DE DATOS Y CLAVES
+# =========================================================================
+
+def _generar_password():
+    return "VacaDiez2026"
+
+def _set_clave(clave, valor):
+    try:
+        config = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
+        if config:
+            config.valor = valor
+        else:
+            nueva_config = ConfiguracionSuperadmin(clave=clave, valor=valor)
+            db.session.add(nueva_config)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+def _esta_configurado():
+    return _obtener_clave('institucion_configurada', 'false').lower() == 'true'
+
+def _obtener_configuracion_institucion():
+    return inject_configuracion_institucional()['configs']
+
+# =========================================================================
+# PROTECCION GLOBAL CON CONTRASENA + VERIFICACION DE CONFIGURACION
+# =========================================================================
+
+@app.before_request
+def proteger_acceso_global():
+    """Protege TODA la aplicacion con contrasena y verifica configuracion."""
+    rutas_excluidas = [
+        'static',
+        'login_pwa',
+        'global_logout',
+        'setup',  # Ruta de configuracion inicial
+        'api_estudiantes_por_curso',
+        'portal_padres.',
+        'auth.',
+        'pwa.',
+    ]
+
+    endpoint = request.endpoint or ''
+
+    for excluida in rutas_excluidas:
+        if excluida in endpoint or request.path.startswith('/static'):
+            return None
+
+    # VERIFICAR SI LA INSTITUCION ESTA CONFIGURADA
+    if not _esta_configurado():
+        return redirect(url_for('setup'))
+
+    if session.get('pwa_autenticado'):
+        return None
+
+    return redirect(url_for('login_pwa'))
+
+# =========================================================================
+# ASISTENTE DE CONFIGURACION INICIAL
+# =========================================================================
+
+@app.route('/setup', methods=['GET', 'POST'])
+def setup():
+    """Formulario de configuracion inicial de la institucion."""
+    
+    # Si ya esta configurado, redirigir al login
+    if _esta_configurado():
+        return redirect(url_for('login_pwa'))
+    
+    if request.method == 'POST':
+        try:
+            # Obtener datos del formulario
+            linea1 = request.form.get('linea1', '').strip()
+            linea2 = request.form.get('linea2', '').strip()
+            linea3 = request.form.get('linea3', '').strip()
+            direccion = request.form.get('direccion', '').strip()
+            telefono = request.form.get('telefono', '').strip()
+            email = request.form.get('email', '').strip()
+            ciudad = request.form.get('ciudad', '').strip()
+            gestion = request.form.get('gestion', str(datetime.now().year)).strip()
+            password_pwa = request.form.get('password_pwa', '').strip()
+            password_admin = request.form.get('password_admin', '').strip()
+            
+            # Validaciones basicas
+            if not linea1:
+                flash('El nombre de la institucion (linea 1) es obligatorio.', 'danger')
+                return render_template_string(SETUP_TEMPLATE)
+            
+            if not password_pwa or len(password_pwa) < 6:
+                flash('La contrasena PWA debe tener al menos 6 caracteres.', 'danger')
+                return render_template_string(SETUP_TEMPLATE)
+            
+            if not password_admin or len(password_admin) < 6:
+                flash('La contrasena Superadmin debe tener al menos 6 caracteres.', 'danger')
+                return render_template_string(SETUP_TEMPLATE)
+            
+            # Guardar configuracion
+            _set_clave('institucion_linea1', linea1)
+            _set_clave('institucion_linea2', linea2)
+            _set_clave('institucion_linea3', linea3)
+            _set_clave('institucion_direccion', direccion)
+            _set_clave('institucion_telefono', telefono)
+            _set_clave('institucion_email', email)
+            _set_clave('institucion_ciudad', ciudad)
+            _set_clave('institucion_gestion', gestion)
+            
+            # Procesar logo si se subio
+            if 'logo' in request.files:
+                logo_file = request.files['logo']
+                if logo_file and logo_file.filename != '':
+                    filename = secure_filename(logo_file.filename)
+                    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'png'
+                    logo_filename = f'logo_institucion.{ext}'
+                    
+                    # Guardar directo en la boveda segura
+                    logo_path = os.path.join(UPLOAD_FOLDER, logo_filename)
+                    logo_file.save(logo_path)
+                    
+                    _set_clave('institucion_logo', logo_filename)
+                else:
+                    _set_clave('institucion_logo', 'logo_institucion.png')
+            else:
+                _set_clave('institucion_logo', 'logo_institucion.png')
+            
+            # Guardar contrasenas
+            _set_clave('pwa_password', password_pwa)
+            _set_clave('superadmin_password', password_admin)
+            
+            # Marcar como configurado
+            _set_clave('institucion_configurada', 'true')
+            
+            flash('Configuracion completada exitosamente. Ahora puede iniciar sesion.', 'success')
+            return redirect(url_for('login_pwa'))
+            
+        except Exception as e:
+            flash(f'Error al guardar la configuracion: {str(e)}', 'danger')
+            return render_template_string(SETUP_TEMPLATE)
+    
+    return render_template_string(SETUP_TEMPLATE)
+
+# Eximir setup del CSRF (usa render_template_string)
+csrf.exempt(setup)
+
+# =========================================================================
+# PANTALLA DE LOGIN PWA
+# =========================================================================
+
+@app.route('/login-pwa', methods=['GET', 'POST'])
+def login_pwa():
+    """Pantalla de contrasena para acceder a la PWA."""
+    error = None
+
+    if request.method == 'POST':
+        password = request.form.get('password', '').strip()
+        clave_pwa = _obtener_clave('pwa_password', 'VacaDiez2026')
+
+        if password == clave_pwa:
+            session['pwa_autenticado'] = True
+            session['pwa_login_time'] = datetime.now().isoformat()
+            session.permanent = False
+            siguiente = request.args.get('next', url_for('dashboard.index'))
+            return redirect(siguiente)
+        else:
+            error = 'Contrasena incorrecta'
+
+    # Obtener configuracion para mostrar en el login
+    config = _obtener_configuracion_institucion()
+    nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestion Escolar')
+
+    return render_template_string(LOGIN_TEMPLATE, error=error, 
+                                 nombre_institucion=nombre_institucion,
+                                 config=config)
+
+# ==============================================================================
+# PLANTILLAS HTML
 # ==============================================================================
 
 SETUP_TEMPLATE = """
@@ -495,7 +422,7 @@ SETUP_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>Configuración Inicial - Sistema de Gestión Escolar</title>
+    <title>Configuracion Inicial - Sistema de Gestion Escolar</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <style>
@@ -562,8 +489,8 @@ SETUP_TEMPLATE = """
     <div class="setup-card card">
         <div class="setup-header">
             <i class="bi bi-gear-fill"></i>
-            <h2 class="mt-3 mb-1">Configuración Inicial</h2>
-            <small class="text-white-50">Configure los datos de su institución</small>
+            <h2 class="mt-3 mb-1">Configuracion Inicial</h2>
+            <small class="text-white-50">Configure los datos de su institucion</small>
         </div>
         <div class="setup-body">
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -578,34 +505,35 @@ SETUP_TEMPLATE = """
             {% endwith %}
 
             <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <h5 class="section-title">
-                    <i class="bi bi-building me-2"></i>Datos de la Institución
+                    <i class="bi bi-building me-2"></i>Datos de la Institucion
                 </h5>
                 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Nombre de la Institución (Línea 1) *</label>
+                    <label class="form-label fw-bold">Nombre de la Institucion (Linea 1) *</label>
                     <input type="text" name="linea1" class="form-control" 
                            placeholder="Ej: Unidad Educativa" required>
-                    <small class="text-muted">Primera línea del nombre oficial</small>
+                    <small class="text-muted">Primera linea del nombre oficial</small>
                 </div>
                 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Nombre de la Institución (Línea 2)</label>
+                    <label class="form-label fw-bold">Nombre de la Institucion (Linea 2)</label>
                     <input type="text" name="linea2" class="form-control" 
-                           placeholder="Ej: Dr. Antonio Vaca Díez">
-                    <small class="text-muted">Segunda línea del nombre oficial (opcional)</small>
+                           placeholder="Ej: Dr. Antonio Vaca Diez">
+                    <small class="text-muted">Segunda linea del nombre oficial (opcional)</small>
                 </div>
                 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Nombre de la Institución (Línea 3)</label>
+                    <label class="form-label fw-bold">Nombre de la Institucion (Linea 3)</label>
                     <input type="text" name="linea3" class="form-control" 
                            placeholder="Ej: Riberalta - Beni">
-                    <small class="text-muted">Tercera línea del nombre oficial (opcional)</small>
+                    <small class="text-muted">Tercera linea del nombre oficial (opcional)</small>
                 </div>
                 
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Dirección</label>
+                        <label class="form-label fw-bold">Direccion</label>
                         <input type="text" name="direccion" class="form-control" 
                                placeholder="Av. Principal #123">
                     </div>
@@ -618,7 +546,7 @@ SETUP_TEMPLATE = """
                 
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Teléfono</label>
+                        <label class="form-label fw-bold">Telefono</label>
                         <input type="text" name="telefono" class="form-control" 
                                placeholder="3-8521234">
                     </div>
@@ -630,39 +558,39 @@ SETUP_TEMPLATE = """
                 </div>
                 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Gestión (Año)</label>
+                    <label class="form-label fw-bold">Gestion (Ano)</label>
                     <input type="number" name="gestion" class="form-control" 
                            value="{{ now().year }}" min="2020" max="2100">
                 </div>
                 
                 <div class="mb-3">
                     <label class="form-label fw-bold">
-                        <i class="bi bi-image me-2"></i>Logo de la Institución
+                        <i class="bi bi-image me-2"></i>Logo de la Institucion
                     </label>
                     <input type="file" name="logo" class="form-control" accept="image/*">
-                    <small class="text-muted">Formatos: PNG, JPG, JPEG. Se usará como marca de agua en documentos.</small>
+                    <small class="text-muted">Formatos: PNG, JPG, JPEG. Se usara como marca de agua en documentos.</small>
                 </div>
                 
                 <h5 class="section-title">
-                    <i class="bi bi-shield-lock me-2"></i>Contraseñas de Acceso
+                    <i class="bi bi-shield-lock me-2"></i>Contrasenas de Acceso
                 </h5>
                 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Contraseña PWA (acceso general) *</label>
+                    <label class="form-label fw-bold">Contrasena PWA (acceso general) *</label>
                     <input type="password" name="password_pwa" class="form-control" 
-                           placeholder="Mínimo 6 caracteres" required minlength="6">
-                    <small class="text-muted">Esta contraseña protege el acceso al sistema</small>
+                           placeholder="Minimo 6 caracteres" required minlength="6">
+                    <small class="text-muted">Esta contrasena protege el acceso al sistema</small>
                 </div>
                 
                 <div class="mb-4">
-                    <label class="form-label fw-bold">Contraseña Superadmin (Bóveda) *</label>
+                    <label class="form-label fw-bold">Contrasena Superadmin (Boveda) *</label>
                     <input type="password" name="password_admin" class="form-control" 
-                           placeholder="Mínimo 6 caracteres" required minlength="6">
-                    <small class="text-muted">Esta contraseña protege las funciones administrativas</small>
+                           placeholder="Minimo 6 caracteres" required minlength="6">
+                    <small class="text-muted">Esta contrasena protege las funciones administrativas</small>
                 </div>
                 
                 <button type="submit" class="btn btn-primary btn-setup w-100">
-                    <i class="bi bi-check-circle me-2"></i>Guardar Configuración y Continuar
+                    <i class="bi bi-check-circle me-2"></i>Guardar Configuracion y Continuar
                 </button>
             </form>
         </div>
@@ -670,11 +598,6 @@ SETUP_TEMPLATE = """
 </body>
 </html>
 """
-
-
-# ==============================================================================
-# PLANTILLA DE LOGIN PWA
-# ==============================================================================
 
 LOGIN_TEMPLATE = """
 <!DOCTYPE html>
@@ -746,21 +669,21 @@ LOGIN_TEMPLATE = """
 <body>
     <div class="login-card card">
         <div class="login-header">
-            {% if config and config.get('institucion_logo') %}
-            <img src="{{ url_for('static', filename=config['institucion_logo']) }}" 
+            {% if config and config.get('institucion_logo_url') %}
+            <img src="{{ config['institucion_logo_url'] }}" 
                  alt="Logo" style="max-width: 120px; max-height: 120px; margin-bottom: 15px; border-radius: 8px;">
             {% else %}
             <i class="bi bi-shield-lock-fill"></i>
             {% endif %}
             
-            <h4 class="mt-3 mb-1">{{ config.get('institucion_linea1', 'Sistema de Gestión Escolar') }}</h4>
+            <h4 class="mt-3 mb-1">{{ config.get('institucion_linea1', 'Sistema de Gestion Escolar') }}</h4>
             {% if config.get('institucion_linea2') %}
             <div class="institucion-info">{{ config['institucion_linea2'] }}</div>
             {% endif %}
             {% if config.get('institucion_linea3') %}
             <div class="institucion-info" style="font-size: 1rem;">{{ config['institucion_linea3'] }}</div>
             {% endif %}
-            <small class="text-white-50">Sistema de Gestión Escolar</small>
+            <small class="text-white-50">Sistema de Gestion Escolar</small>
         </div>
         <div class="login-body">
             {% if error %}
@@ -770,14 +693,15 @@ LOGIN_TEMPLATE = """
             {% endif %}
 
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="mb-4">
                     <label class="form-label fw-bold">
-                        <i class="bi bi-key-fill text-primary"></i> Contraseña de Acceso
+                        <i class="bi bi-key-fill text-primary"></i> Contrasena de Acceso
                     </label>
                     <input type="password"
                            name="password"
                            class="form-control"
-                           placeholder="Ingrese la contraseña"
+                           placeholder="Ingrese la contrasena"
                            autocomplete="off"
                            autofocus
                            required>
@@ -798,22 +722,41 @@ LOGIN_TEMPLATE = """
 </html>
 """
 
-
+def create_app():
+    """Funcion fabrica requerida por run.py para inicializar la aplicacion."""
+    return app
 
 if __name__ == '__main__':
+    # =========================================================================
+    # VERIFICACION DE LICENCIA LOCAL (AVRORA SOFT - VIBOLA LLC)
+    # =========================================================================
+    valido, mensaje_licencia = comprobar_licencia_local()
+    
+    print("=" * 60)
+    print("[ MODULO DE LICENCIAMIENTO - ASestud / Avrora Soft ]")
+    print("=" * 60)
+    if not valido:
+        print(f"[ ERROR CRITICO ]: {mensaje_licencia}")
+        print("[ Accion requerida ]: Coloque un archivo 'licencia.key' valido en la raiz.")
+        print("=" * 60)
+        sys.exit(1)
+    else:
+        print(f"[ OK ]: {mensaje_licencia}")
+        print("=" * 60)
+
     with app.app_context():
         db.create_all()
         
-        # Autoinicialización de seguridad: Si no existe configuración ni admin, se crean por defecto
+        # Autoinicializacion de seguridad
         try:
             from models import ConfiguracionInstitucion, PersonalAdministrativo
             from werkzeug.security import generate_password_hash
             
             if not ConfiguracionInstitucion.query.first():
                 config_inicial = ConfiguracionInstitucion(
-                    institucion_linea1="Sistema de Gestión Escolar",
-                    institucion_linea2="Módulo Académico Institucional",
-                    institucion_logo="uploads/logo_institucion.png"
+                    institucion_linea1="Sistema de Gestion Escolar",
+                    institucion_linea2="Modulo Academico Institucional",
+                    institucion_logo="logo_institucion.png"
                 )
                 db.session.add(config_inicial)
             
@@ -833,17 +776,22 @@ if __name__ == '__main__':
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            print(f"⚠️ Aviso en autoinicialización: {e}")
+            print(f"[ Aviso en autoinicializacion ]: {e}")
 
         print("=" * 60)
-        print("🚀 Sistema de Gestión Escolar - Servidor Iniciado Correctamente")
-        print("👤 Credenciales de Acceso: admin / admin2026")
+        print("[ Sistema de Gestion Escolar - Servidor Iniciado Correctamente ]")
+        print("[ Credenciales de Acceso: admin / admin2026 ]")
         print("=" * 60)
 
-    ES_PRODUCCION = os.environ.get('FLASK_ENV') == 'production'
+    # Abre el navegador automaticamente
+    try:
+        webbrowser.open("http://127.0.0.1:5000")
+    except Exception:
+        pass
 
+    # Forzamos modo de produccion (debug=False) para evitar el reinicio en el ejecutable
     app.run(
-        debug=not ES_PRODUCCION,
+        debug=False,
         host='0.0.0.0',
         port=5000
     )

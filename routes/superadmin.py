@@ -1304,6 +1304,8 @@ def informes_eliminar(id):
 
 @superadmin_bp.route('/configuracion_anio_escolar', methods=['GET', 'POST'])
 def configuracion_anio_escolar():
+    from models import ConfiguracionSuperadmin
+    
     if not check_superadmin():
         return redirect(url_for('dashboard.index'))
 
@@ -1374,24 +1376,28 @@ def configuracion_anio_escolar():
                     cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
                     if cfg:
                         cfg.valor = valor
+                    else:
+                        # Si no existe en la base de datos virgen, se crea desde cero
+                        nuevo_cfg = ConfiguracionSuperadmin(
+                            clave=clave, 
+                            valor=valor, 
+                            descripcion=f'Configuracion de anio escolar: {clave}'
+                        )
+                        db.session.add(nuevo_cfg)
                     actualizados += 1
 
             db.session.commit()
-            flash(f'✅ Configuración del año escolar actualizada ({actualizados} parámetros).', 'success')
+            flash(f'Configuracion del anio escolar actualizada ({actualizados} parametros).', 'success')
             return redirect(url_for('superadmin.configuracion_anio_escolar'))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'❌ Error al guardar configuración: {str(e)}', 'danger')
+            flash(f'Error al guardar configuracion: {str(e)}', 'danger')
 
     # Obtener todos los parámetros actuales
     configs = {c.clave: c.valor for c in ConfiguracionSuperadmin.query.all()}
     
     return render_template('superadmin/configuracion_anio_escolar.html', configs=configs)
-
-# =========================================================================
-# CONFIGURACIÓN INSTITUCIONAL (LOGO Y DENOMINACIÓN)
-# =========================================================================
 
 @superadmin_bp.route('/configuracion_institucion', methods=['GET', 'POST'])
 def configuracion_institucion():
@@ -1401,69 +1407,59 @@ def configuracion_institucion():
     if request.method == 'POST':
         try:
             actualizados = 0
+            import time
             
-            # Procesar de forma dinámica CUALQUIER campo de texto enviado por el formulario
+            # 1. Procesar textos
             for clave, valor in request.form.items():
                 if clave.startswith('institucion_'):
                     valor_limpio = valor.strip()
                     cfg = ConfiguracionSuperadmin.query.filter_by(clave=clave).first()
                     if cfg:
                         cfg.valor = valor_limpio
-                        actualizados += 1
                     else:
                         nuevo = ConfiguracionSuperadmin(
-                            clave=clave,
-                            valor=valor_limpio,
-                            descripcion=f'Datos institucionales: {clave}'
+                            clave=clave, valor=valor_limpio, descripcion=f'Datos: {clave}'
                         )
                         db.session.add(nuevo)
-                        actualizados += 1
+                    actualizados += 1
 
-            # Procesar subida de logo (compatible con múltiples formatos)
+            # 2. Procesar Logo con nombre dinámico antibloqueo PWA
             archivo_logo = request.files.get('logo_institucion')
             if archivo_logo and archivo_logo.filename:
+                extension = archivo_logo.filename.rsplit('.', 1)[-1].lower() if '.' in archivo_logo.filename else 'png'
                 extensiones_permitidas = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
-                extension = archivo_logo.filename.rsplit('.', 1)[-1].lower() if '.' in archivo_logo.filename else ''
                 
                 if extension not in extensiones_permitidas:
                     db.session.rollback()
-                    flash(f'❌ Formato de imagen inválido. Use: PNG, JPG, JPEG, GIF, WEBP o SVG.', 'danger')
+                    flash('❌ Formato de imagen inválido.', 'danger')
                     return redirect(url_for('superadmin.configuracion_institucion'))
                 
-                archivo_logo.seek(0, os.SEEK_END)
-                tamano = archivo_logo.tell()
-                archivo_logo.seek(0)
-                
-                if tamano > 5 * 1024 * 1024:
-                    db.session.rollback()
-                    flash('❌ El logo excede el tamaño máximo permitido (5MB).', 'danger')
-                    return redirect(url_for('superadmin.configuracion_institucion'))
-                
-                upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
+                BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+                upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
                 os.makedirs(upload_dir, exist_ok=True)
                 
-                # Limpiar logos anteriores
-                for ext_posible in extensiones_permitidas:
-                    archivo_antiguo = os.path.join(upload_dir, f'logo_institucion.{ext_posible}')
-                    if os.path.exists(archivo_antiguo):
-                        try:
-                            os.remove(archivo_antiguo)
-                        except Exception:
-                            pass
-
-                nombre_seguro = f'logo_institucion.{extension}'
+                # Generar nombre único basado en el tiempo actual
+                timestamp = int(time.time())
+                nombre_seguro = f'logo_{timestamp}.{extension}'
                 ruta_destino = os.path.join(upload_dir, nombre_seguro)
                 archivo_logo.save(ruta_destino)
                 
-                ruta_bd = f'uploads/{nombre_seguro}'
+                # Limpiar logos anteriores para ahorrar espacio
+                for archivo in os.listdir(upload_dir):
+                    if archivo.startswith('logo_'):
+                        try:
+                            if archivo != nombre_seguro:
+                                os.remove(os.path.join(upload_dir, archivo))
+                        except Exception:
+                            pass
+
+                # Guardar el nuevo nombre en la Base de Datos
                 cfg_logo = ConfiguracionSuperadmin.query.filter_by(clave='institucion_logo').first()
                 if cfg_logo:
-                    cfg_logo.valor = ruta_bd
+                    cfg_logo.valor = nombre_seguro
                 else:
                     nuevo_logo = ConfiguracionSuperadmin(
-                        clave='institucion_logo',
-                        valor=ruta_bd,
-                        descripcion='Logo oficial de la institución'
+                        clave='institucion_logo', valor=nombre_seguro, descripcion='Logo oficial'
                     )
                     db.session.add(nuevo_logo)
                 
@@ -1471,41 +1467,49 @@ def configuracion_institucion():
                 flash('✅ Logo actualizado correctamente.', 'success')
 
             db.session.commit()
-            flash(f'✅ Configuración institucional guardada con éxito ({actualizados} campos procesados).', 'success')
+            flash(f'✅ Configuración guardada con éxito.', 'success')
             return redirect(url_for('superadmin.configuracion_institucion'))
 
         except Exception as e:
             db.session.rollback()
-            flash(f'❌ Error al guardar configuración institucional: {str(e)}', 'danger')
+            flash(f'❌ Error al guardar: {str(e)}', 'danger')
 
     valores_por_defecto = {
-        'institucion_linea1': 'Institución Educativa',
-        'institucion_linea2': 'Educación y Excelencia',
-        'institucion_linea3': 'Gestión Académica',
-        'institucion_direccion': 'Ciudad, País',
-        'institucion_telefono': '000-0000',
-        'institucion_email': 'contacto@institucion.edu',
-        'institucion_ciudad': 'Ciudad',
-        'institucion_gestion': '2026',
-        'institucion_logo': 'uploads/logo_institucion.png'
+        'institucion_linea1': '', 'institucion_linea2': '', 'institucion_linea3': '',
+        'institucion_direccion': '', 'institucion_telefono': '', 'institucion_email': '',
+        'institucion_ciudad': '', 'institucion_gestion': '2026', 'institucion_logo': ''
     }
     
     configs_db = {c.clave: c.valor for c in ConfiguracionSuperadmin.query.all()}
     configs = {**valores_por_defecto, **configs_db}
-    
-    logo_path = configs.get('institucion_logo', 'uploads/logo_institucion.png')
-    logo_url = url_for('static', filename=logo_path) if not logo_path.startswith('http') else logo_path
         
-    return render_template(
-        'superadmin/configuracion_institucion.html',
-        configs=configs,
-        logo_url=logo_url
-    )
+    return render_template('superadmin/configuracion_institucion.html', configs=configs)
 
 
-@superadmin_bp.before_app_request
-def verificar_salida_superadmin():
-    if request.path and not request.path.startswith('/superadmin'):
-        session.pop('superadmin_activo', None)
-        session.pop('superadmin_boveda', None)
-        session.pop('es_superadmin', None)
+@superadmin_bp.route('/ver_logo_institucion')
+def ver_logo_institucion():
+    """Túnel directo para servir el logo, con caché optimizada para evitar pestañeos."""
+    import os
+    from flask import send_file
+    from models import ConfiguracionSuperadmin
+    
+    try:
+        # Buscar el nombre exacto en la BD
+        cfg = ConfiguracionSuperadmin.query.filter_by(clave='institucion_logo').first()
+        nombre = cfg.valor if cfg and cfg.valor else 'logo_institucion.png'
+        
+        # Buscar en el disco duro
+        BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+        ruta = os.path.join(BASE_DIR, 'static', 'uploads', nombre)
+        
+        if not os.path.exists(ruta):
+            ruta = os.path.join(BASE_DIR, 'static', 'default.png')
+            
+        # Permitimos que el navegador guarde la imagen en RAM por 24 horas (86400 segundos)
+        respuesta = send_file(ruta)
+        respuesta.headers['Cache-Control'] = 'public, max-age=86400'
+        return respuesta
+        
+    except Exception:
+        BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+        return send_file(os.path.join(BASE_DIR, 'static', 'default.png'))
