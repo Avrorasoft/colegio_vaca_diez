@@ -3,12 +3,6 @@
 ==============================================================================
 Archivo: routes/pwa.py
 Proyecto: Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez
-Desarrollado por: Avrora Soft - Vibola LLC
-Módulo: Acceso PWA para Padres de Familia / Tutores
-        - Identificador: Cédula de Identidad (CI) del Tutor como Usuario.
-        - Clave inicial universal: '1234'.
-        - Cambio de contraseña voluntario por parte del tutor.
-        - Reseteo administrativo de contraseña a '1234'.
 ==============================================================================
 """
 
@@ -16,7 +10,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, session, current_app
+    flash, session, current_app, send_from_directory
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, Estudiante, Padre, Mensaje, Pago, Calificacion
@@ -25,10 +19,30 @@ pwa_bp = Blueprint('pwa', __name__, url_prefix='/pwa', template_folder='template
 
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
 
+def safe_float(value):
+    """Convierte a decimal soportando comas bolivianas (ej. 150,50 -> 150.50)."""
+    try:
+        if value is None or str(value).strip() == '':
+            return 0.0
+        clean_val = str(value).replace(',', '.').strip()
+        return float(clean_val)
+    except (ValueError, TypeError):
+        return 0.0
+
+def calcular_saldo_pago(pago, pension_estudiante=0.0):
+    """Calcula el saldo real respaldándose en la pensión si el pago está vacío."""
+    mt = safe_float(pago.monto_total)
+    des = safe_float(pago.descuento)
+    mp = safe_float(pago.monto_pagado)
+    saldo = mt - des - mp
+    
+    if saldo <= 0 and (mt == 0.0) and pension_estudiante > 0:
+        saldo = pension_estudiante - des - mp
+        
+    return max(0.0, saldo)
 
 @pwa_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    # Si ya cuenta con sesión abierta válida, ingresa directo al panel
     if 'padre_logueado' in session:
         return redirect(url_for('pwa.dashboard'))
 
@@ -40,14 +54,12 @@ def login():
             flash('⚠️ Debe ingresar su Cédula de Identidad y su contraseña.', 'warning')
             return render_template('pwa/login.html')
 
-        # Búsqueda directa del tutor por su CI
         padre = Padre.query.filter_by(ci=ci_tutor).first()
 
         if not padre:
             flash('❌ No se encontró ningún tutor registrado con el C.I. ingresado.', 'danger')
             return render_template('pwa/login.html')
 
-        # Validación de contraseña (personalizada o universal 1234)
         clave_valida = False
         if hasattr(padre, 'verificar_clave'):
             clave_valida = padre.verificar_clave(contrasena)
@@ -61,10 +73,8 @@ def login():
             flash('❌ Contraseña incorrecta. (Si es su primer ingreso, utilice la contraseña universal 1234).', 'danger')
             return render_template('pwa/login.html')
 
-        # Estudiante asociado
         estudiante = Estudiante.query.get(padre.estudiante_id)
 
-        # Configuración de persistencia de sesión móvil (90 días)
         session.permanent = True
         current_app.permanent_session_lifetime = timedelta(days=90)
 
@@ -88,16 +98,24 @@ def dashboard():
 
     padre_id = session.get('padre_id')
     padre = Padre.query.get_or_404(padre_id)
-    estudiante = Estudiante.query.get(padre.estudiante_id)
+    estudiante = Estudiante.query.get(padre.estudiante_id) if padre.estudiante_id else None
 
-    # Estado de cuenta y comunicados
     pagos_pendientes = []
-    monto_pendiente = 0.0
+    monto_mora = 0.0
     mensajes_recientes = []
 
     if estudiante:
-        pagos_pendientes = Pago.query.filter_by(estudiante_id=estudiante.id, estado='Pendiente').all()
-        monto_pendiente = sum((p.monto_total - (p.descuento or 0.0)) for p in pagos_pendientes)
+        pension_est = safe_float(estudiante.pension)
+        todos_los_pagos = Pago.query.filter_by(estudiante_id=estudiante.id).all()
+        
+        for p in todos_los_pagos:
+            estado = str(p.estado or '').strip().lower()
+            if estado != 'pagado':
+                saldo = calcular_saldo_pago(p, pension_est)
+                if saldo > 0:
+                    pagos_pendientes.append(p)
+                    monto_mora += saldo
+
         mensajes_recientes = Mensaje.query.filter_by(estudiante_id=estudiante.id).order_by(Mensaje.fecha_envio.desc()).limit(5).all()
 
     es_clave_universal = (padre.contrasena_hash is None)
@@ -107,10 +125,34 @@ def dashboard():
         padre=padre,
         estudiante=estudiante,
         pagos_pendientes=pagos_pendientes,
-        monto_pendiente=monto_pendiente,
+        monto_pendiente=monto_mora, # Vinculado al nuevo cálculo matemático
+        monto_mora=monto_mora,
         mensajes_recientes=mensajes_recientes,
         es_clave_universal=es_clave_universal
     )
+
+
+@pwa_bp.route('/boletin')
+def ver_boletin():
+    """Descarga el boletín forzando attachment para que los celulares no bloqueen el PDF"""
+    if 'padre_logueado' not in session:
+        return redirect(url_for('pwa.login'))
+        
+    padre_id = session.get('padre_id')
+    padre = Padre.query.get_or_404(padre_id)
+    estudiante = Estudiante.query.get(padre.estudiante_id)
+    
+    anio_actual = datetime.now(BOLIVIA_TZ).year
+    filename = f"boletin_{estudiante.id}_{anio_actual}_{estudiante.rude}.pdf"
+    
+    boletines_dir = os.path.join(current_app.root_path, 'static', 'boletines')
+    filepath = os.path.join(boletines_dir, filename)
+    
+    if not os.path.exists(filepath):
+        flash('⚠️ El boletín aún no ha sido generado por la administración.', 'warning')
+        return redirect(url_for('pwa.dashboard'))
+        
+    return send_from_directory(boletines_dir, filename, as_attachment=True)
 
 
 @pwa_bp.route('/cambiar_contrasena', methods=['POST'])
@@ -120,7 +162,6 @@ def cambiar_contrasena():
 
     padre_id = session.get('padre_id')
     padre = Padre.query.get_or_404(padre_id)
-
     nueva_clave = request.form.get('nueva_contrasena', '').strip()
     confirmar_clave = request.form.get('confirmar_contrasena', '').strip()
 
@@ -150,10 +191,6 @@ def cambiar_contrasena():
 
 @pwa_bp.route('/restablecer_clave/<int:padre_id>', methods=['POST'])
 def restablecer_clave_padre(padre_id):
-    """
-    Ruta administrativa para que Secretaría / Superadmin devuelva
-    la clave del tutor a la contraseña universal '1234'.
-    """
     rol = session.get('rol')
     es_super = session.get('es_superadmin')
 
@@ -167,7 +204,6 @@ def restablecer_clave_padre(padre_id):
             padre.restablecer_clave_universal()
         else:
             padre.contrasena_hash = None
-
         db.session.commit()
         flash(f'✅ Acceso restablecido: El tutor {padre.nombres} ahora puede ingresar nuevamente con la clave 1234.', 'success')
     except Exception as e:

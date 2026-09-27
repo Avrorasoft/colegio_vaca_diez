@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from models import db, Gasto
 from datetime import datetime
 from werkzeug.utils import secure_filename
@@ -19,8 +19,16 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx', 'xls', 'xlsx'}
 def archivo_permitido(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def verificar_turno_activo():
+    """Comprueba si existe un turno de caja activo en la sesión."""
+    return bool(session.get('turno_activo'))
+
 @gastos_bp.route('/')
 def index():
+    if not verificar_turno_activo():
+        flash('⚠️ Debe abrir e iniciar un turno de caja activo para acceder al módulo de gastos.', 'warning')
+        return redirect('/caja/')
+
     search = request.args.get('search', '', type=str)
     mes_filtro = request.args.get('mes', '', type=str)
     anio_filtro = request.args.get('anio', type=int)
@@ -64,6 +72,10 @@ def index():
 
 @gastos_bp.route('/nuevo', methods=['GET', 'POST'])
 def nuevo():
+    if not verificar_turno_activo():
+        flash('⚠️ Debe tener un turno de caja activo para registrar nuevos gastos.', 'warning')
+        return redirect('/caja/')
+
     if request.method == 'POST':
         try:
             metodo_pago = request.form.get('metodo_pago', 'Efectivo').strip()
@@ -95,7 +107,7 @@ def nuevo():
             db.session.add(nuevo_gasto)
             db.session.commit()
             flash('✅ Gasto registrado exitosamente con su comprobante.', 'success')
-            return redirect(url_for('gastos.index'))
+            return redirect('/caja/')  # ⭐ Redirige de inmediato a la caja unificada
 
         except Exception as e:
             db.session.rollback()
@@ -105,10 +117,14 @@ def nuevo():
 
 @gastos_bp.route('/editar/<int:id>', methods=['GET', 'POST'])
 def editar(id):
+    if not verificar_turno_activo():
+        flash('⚠️ Debe tener un turno de caja activo para editar gastos.', 'warning')
+        return redirect('/caja/')
+
     rol_actual = str(session.get('rol', '')).lower().strip()
     if rol_actual not in ['admin', 'superadmin', 'administrador']:
-        flash('❌ Acceso denegado: Solo el Superadmin pueden editar o anular gastos.', 'danger')
-        return redirect(url_for('gastos.index'))
+        flash('❌ Acceso denegado: Solo el Superadmin puede editar o anular gastos.', 'danger')
+        return redirect('/caja/')
     
     gasto = Gasto.query.get_or_404(id)
 
@@ -138,7 +154,7 @@ def editar(id):
 
             db.session.commit()
             flash('✅ Gasto actualizado correctamente.', 'success')
-            return redirect(url_for('gastos.index'))
+            return redirect('/caja/')  # ⭐ Redirige de inmediato a la caja unificada
 
         except Exception as e:
             db.session.rollback()
@@ -148,10 +164,14 @@ def editar(id):
 
 @gastos_bp.route('/eliminar/<int:id>', methods=['POST'])
 def eliminar(id):
+    if not verificar_turno_activo():
+        flash('⚠️ Debe tener un turno de caja activo para eliminar gastos.', 'warning')
+        return redirect('/caja/')
+
     rol_actual = str(session.get('rol', '')).lower().strip()
     if rol_actual not in ['admin', 'superadmin', 'administrador']:
-        flash('❌ Acceso denegado: Solo el Superadmin pueden editar o anular gastos.', 'danger')
-        return redirect(url_for('gastos.index'))
+        flash('❌ Acceso denegado: Solo el Superadmin puede editar o anular gastos.', 'danger')
+        return redirect('/caja/')
     try:
         gasto = Gasto.query.get_or_404(id)
         db.session.delete(gasto)
@@ -160,10 +180,14 @@ def eliminar(id):
     except Exception as e:
         db.session.rollback()
         flash(f'❌ Error: {str(e)}', 'danger')
-    return redirect(url_for('gastos.index'))
+    return redirect('/caja/')  # ⭐ Redirige de inmediato a la caja unificada
 
 @gastos_bp.route('/reporte')
 def reporte():
+    if not verificar_turno_activo():
+        flash('⚠️ Debe tener un turno de caja activo para ver reportes de gastos.', 'warning')
+        return redirect('/caja/')
+
     anio = request.args.get('anio', type=int, default=datetime.now().year)
     gastos_anio = Gasto.query.filter(db.func.strftime('%Y', Gasto.fecha) == str(anio)).all()
     resumen = {}
@@ -181,5 +205,9 @@ def reporte():
 
 @gastos_bp.route('/comprobante/<int:gasto_id>')
 def comprobante_gasto(gasto_id):
+    if not verificar_turno_activo():
+        flash('⚠️ Debe tener un turno de caja activo para ver comprobantes.', 'warning')
+        return redirect('/caja/')
+
     gasto = Gasto.query.get_or_404(gasto_id)
     return render_template('gastos/comprobante.html', gasto=gasto)

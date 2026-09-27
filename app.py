@@ -22,6 +22,9 @@ from flask import (
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.utils import secure_filename
 
+# 1. IMPORTAMOS EL PUENTE DE SEGURIDAD PARA EL TÚNEL
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 # ==============================================================================
 # AUDITORIA FASE 1: IMPORTAR GESTOR DE RUTAS BLINDADAS (%APPDATA%)
 # ==============================================================================
@@ -37,9 +40,12 @@ from validador_licencia import comprobar_licencia_local
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
 
 app = Flask(__name__)
+
+# 2. INYECTAMOS LA REGLA DE CONFIANZA PARA CLOUDFLARED (PWA / HTTPS)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 # Optimizacion de cache para activos estaticos
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
-
 # ==============================================================================
 # CONFIGURACION ROBUSTA (PERSISTENTE EN %APPDATA%)
 # ==============================================================================
@@ -145,6 +151,8 @@ def bloquear_transacciones_sin_turno():
 # ==============================================================================
 # REGISTRO DE BLUEPRINTS (Sin silenciadores de errores)
 # ==============================================================================
+from routes.admin_envios import admin_envios_bp
+app.register_blueprint(admin_envios_bp)
 
 from routes.auth import auth_bp
 csrf.exempt(auth_bp)
@@ -208,30 +216,24 @@ app.register_blueprint(rubricas_bp, url_prefix='/admin/rubricas')
 
 @app.route('/')
 def index():
-    # Si hay una sesion activa, entra al dashboard. Si no, va al login de turno.
-    if '_user_id' in session or 'usuario_id' in session or 'rol' in session:
-        return redirect(url_for('dashboard.index'))
-    return redirect(url_for('auth.login_turno'))
+    # El único destino al abrir el programa es el login obligatorio.
+    return redirect(url_for('login_sistema'))
 
-# Alias de compatibilidad global: Redirige /login a /login-turno
+# Alias de compatibilidad global: Redirige /login a /login-sistema
 @app.route('/login')
 def redirect_login_raiz():
-    from flask import redirect, url_for
-    return redirect(url_for('auth.login_turno'))
+    return redirect(url_for('login_sistema'))
 
 @app.route('/logout')
 def global_logout():
-    """Cierra cualquier sesion activa y redirige al login."""
+    """Cierra cualquier sesion activa y redirige al login obligatorio."""
     session.clear()
     try:
         from flask_login import logout_user
         logout_user()
     except Exception:
         pass
-    try:
-        return redirect(url_for('auth.login_turno'))
-    except Exception:
-        return redirect('/')
+    return redirect(url_for('login_sistema'))
 
 # ==============================================================================
 # SECRET_KEY segura y persistente para evitar errores CSRF en PyInstaller
@@ -264,37 +266,35 @@ def _obtener_configuracion_institucion():
     return inject_configuracion_institucional()['configs']
 
 # =========================================================================
-# PROTECCION GLOBAL CON CONTRASENA + VERIFICACION DE CONFIGURACION
+# PROTECCION GLOBAL ESTRICTA: EL ÚNICO CAMINO OBLIGATORIO
 # =========================================================================
 
 @app.before_request
 def proteger_acceso_global():
-    """Protege TODA la aplicacion con contrasena y verifica configuracion."""
-    rutas_excluidas = [
-        'static',
-        'login_pwa',
-        'global_logout',
-        'setup',  # Ruta de configuracion inicial
-        'api_estudiantes_por_curso',
-        'portal_padres.',
-        'auth.',
-        'pwa.',
-    ]
-
-    endpoint = request.endpoint or ''
-
-    for excluida in rutas_excluidas:
-        if excluida in endpoint or request.path.startswith('/static'):
-            return None
-
-    # VERIFICAR SI LA INSTITUCION ESTA CONFIGURADA
+    """Protege TODA la aplicacion exigiendo contrasena obligatoria en la PC."""
+    
+    # 1. Verificar si la institucion esta configurada primero
     if not _esta_configurado():
-        return redirect(url_for('setup'))
-
-    if session.get('pwa_autenticado'):
+        if request.endpoint != 'setup':
+            return redirect(url_for('setup'))
         return None
 
-    return redirect(url_for('login_pwa'))
+    path = request.path
+
+    # 2. ÚNICAS excepciones técnicas permitidas sin autenticación
+    if (path.startswith('/static') or 
+        path.startswith('/uploads') or 
+        path == '/login' or 
+        path == '/login-sistema' or 
+        path == '/setup'):
+        return None
+
+    # 3. Permitir el paso únicamente si la sesión de la PC está explícitamente autenticada.
+    if session.get('sistema_autenticado'):
+        return None
+
+    # 4. Camino único: Si no está autenticado, bloquear de inmediato y mandar al login
+    return redirect(url_for('login_sistema'))
 
 # =========================================================================
 # ASISTENTE DE CONFIGURACION INICIAL
@@ -304,13 +304,11 @@ def proteger_acceso_global():
 def setup():
     """Formulario de configuracion inicial de la institucion."""
     
-    # Si ya esta configurado, redirigir al login
     if _esta_configurado():
-        return redirect(url_for('login_pwa'))
+        return redirect(url_for('login_sistema'))
     
     if request.method == 'POST':
         try:
-            # Obtener datos del formulario
             linea1 = request.form.get('linea1', '').strip()
             linea2 = request.form.get('linea2', '').strip()
             linea3 = request.form.get('linea3', '').strip()
@@ -319,23 +317,21 @@ def setup():
             email = request.form.get('email', '').strip()
             ciudad = request.form.get('ciudad', '').strip()
             gestion = request.form.get('gestion', str(datetime.now().year)).strip()
-            password_pwa = request.form.get('password_pwa', '').strip()
+            password_sistema = request.form.get('password_sistema', '').strip()
             password_admin = request.form.get('password_admin', '').strip()
             
-            # Validaciones basicas
             if not linea1:
                 flash('El nombre de la institucion (linea 1) es obligatorio.', 'danger')
                 return render_template_string(SETUP_TEMPLATE)
             
-            if not password_pwa or len(password_pwa) < 6:
-                flash('La contrasena PWA debe tener al menos 6 caracteres.', 'danger')
+            if not password_sistema or len(password_sistema) < 6:
+                flash('La contrasena del sistema debe tener al menos 6 caracteres.', 'danger')
                 return render_template_string(SETUP_TEMPLATE)
             
             if not password_admin or len(password_admin) < 6:
                 flash('La contrasena Superadmin debe tener al menos 6 caracteres.', 'danger')
                 return render_template_string(SETUP_TEMPLATE)
             
-            # Guardar configuracion
             _set_clave('institucion_linea1', linea1)
             _set_clave('institucion_linea2', linea2)
             _set_clave('institucion_linea3', linea3)
@@ -345,7 +341,6 @@ def setup():
             _set_clave('institucion_ciudad', ciudad)
             _set_clave('institucion_gestion', gestion)
             
-            # Procesar logo si se subio
             if 'logo' in request.files:
                 logo_file = request.files['logo']
                 if logo_file and logo_file.filename != '':
@@ -353,7 +348,6 @@ def setup():
                     ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'png'
                     logo_filename = f'logo_institucion.{ext}'
                     
-                    # Guardar directo en la boveda segura
                     logo_path = os.path.join(UPLOAD_FOLDER, logo_filename)
                     logo_file.save(logo_path)
                     
@@ -363,15 +357,13 @@ def setup():
             else:
                 _set_clave('institucion_logo', 'logo_institucion.png')
             
-            # Guardar contrasenas
-            _set_clave('pwa_password', password_pwa)
+            _set_clave('sistema_password', password_sistema)
             _set_clave('superadmin_password', password_admin)
             
-            # Marcar como configurado
             _set_clave('institucion_configurada', 'true')
             
             flash('Configuracion completada exitosamente. Ahora puede iniciar sesion.', 'success')
-            return redirect(url_for('login_pwa'))
+            return redirect(url_for('login_sistema'))
             
         except Exception as e:
             flash(f'Error al guardar la configuracion: {str(e)}', 'danger')
@@ -379,38 +371,36 @@ def setup():
     
     return render_template_string(SETUP_TEMPLATE)
 
-# Eximir setup del CSRF (usa render_template_string)
 csrf.exempt(setup)
 
 # =========================================================================
-# PANTALLA DE LOGIN PWA
+# UNICA PANTALLA DE LOGIN OBLIGATORIA DEL SISTEMA
 # =========================================================================
 
-@app.route('/login-pwa', methods=['GET', 'POST'])
-def login_pwa():
-    """Pantalla de contrasena para acceder a la PWA."""
+@app.route('/login-sistema', methods=['GET', 'POST'])
+def login_sistema():
+    """Pantalla de contrasena unica para acceder al programa en la PC."""
     error = None
 
     if request.method == 'POST':
         password = request.form.get('password', '').strip()
-        clave_pwa = _obtener_clave('pwa_password', 'VacaDiez2026')
+        clave_sistema = _obtener_clave('sistema_password', 'VacaDiez2026')
 
-        if password == clave_pwa:
-            session['pwa_autenticado'] = True
-            session['pwa_login_time'] = datetime.now().isoformat()
+        if password == clave_sistema:
+            session['sistema_autenticado'] = True
+            session['login_time'] = datetime.now().isoformat()
             session.permanent = False
             siguiente = request.args.get('next', url_for('dashboard.index'))
             return redirect(siguiente)
         else:
             error = 'Contrasena incorrecta'
 
-    # Obtener configuracion para mostrar en el login
     config = _obtener_configuracion_institucion()
     nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestion Escolar')
 
     return render_template_string(LOGIN_TEMPLATE, error=error, 
-                                 nombre_institucion=nombre_institucion,
-                                 config=config)
+                                   nombre_institucion=nombre_institucion,
+                                   config=config)
 
 # ==============================================================================
 # PLANTILLAS HTML
@@ -475,13 +465,6 @@ SETUP_TEMPLATE = """
             margin-bottom: 15px;
             padding-bottom: 8px;
             border-bottom: 2px solid #38bdf8;
-        }
-        .logo-preview {
-            max-width: 150px;
-            max-height: 150px;
-            margin-top: 10px;
-            border-radius: 8px;
-            border: 2px solid #e2e8f0;
         }
     </style>
 </head>
@@ -576,10 +559,10 @@ SETUP_TEMPLATE = """
                 </h5>
                 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Contrasena PWA (acceso general) *</label>
-                    <input type="password" name="password_pwa" class="form-control" 
+                    <label class="form-label fw-bold">Contrasena del Sistema (acceso general en PC) *</label>
+                    <input type="password" name="password_sistema" class="form-control" 
                            placeholder="Minimo 6 caracteres" required minlength="6">
-                    <small class="text-muted">Esta contrasena protege el acceso al sistema</small>
+                    <small class="text-muted">Esta contrasena protege el acceso al programa en la PC</small>
                 </div>
                 
                 <div class="mb-4">
@@ -605,8 +588,6 @@ LOGIN_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Acceso - {{ nombre_institucion }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
@@ -624,7 +605,7 @@ LOGIN_TEMPLATE = """
             max-width: 450px;
             margin: 20px;
             border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
             border: none;
         }
         .login-header {
@@ -683,7 +664,7 @@ LOGIN_TEMPLATE = """
             {% if config.get('institucion_linea3') %}
             <div class="institucion-info" style="font-size: 1rem;">{{ config['institucion_linea3'] }}</div>
             {% endif %}
-            <small class="text-white-50">Sistema de Gestion Escolar</small>
+            <small class="text-white-50">Control de Acceso General</small>
         </div>
         <div class="login-body">
             {% if error %}
@@ -696,24 +677,24 @@ LOGIN_TEMPLATE = """
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="mb-4">
                     <label class="form-label fw-bold">
-                        <i class="bi bi-key-fill text-primary"></i> Contrasena de Acceso
+                        <i class="bi bi-key-fill text-primary"></i> Contraseña de Acceso al Programa
                     </label>
                     <input type="password"
                            name="password"
                            class="form-control"
-                           placeholder="Ingrese la contrasena"
+                           placeholder="Ingrese la contraseña"
                            autocomplete="off"
                            autofocus
                            required>
                 </div>
 
                 <button type="submit" class="btn btn-primary btn-login w-100">
-                    <i class="bi bi-unlock-fill"></i> Ingresar al Sistema
+                    <i class="bi bi-unlock-fill me-2"></i>Ingresar al Sistema
                 </button>
             </form>
 
             <div class="footer-text">
-                <i class="bi bi-shield-check"></i> Acceso restringido y autorizado<br>
+                <i class="bi bi-shield-check text-success"></i> Acceso restringido y autorizado<br>
                 Avrora Soft - Vibola LLC &copy; 2026
             </div>
         </div>
@@ -727,9 +708,6 @@ def create_app():
     return app
 
 if __name__ == '__main__':
-    # =========================================================================
-    # VERIFICACION DE LICENCIA LOCAL (AVRORA SOFT - VIBOLA LLC)
-    # =========================================================================
     valido, mensaje_licencia = comprobar_licencia_local()
     
     print("=" * 60)
@@ -747,7 +725,6 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         
-        # Autoinicializacion de seguridad
         try:
             from models import ConfiguracionInstitucion, PersonalAdministrativo
             from werkzeug.security import generate_password_hash
@@ -779,19 +756,18 @@ if __name__ == '__main__':
             print(f"[ Aviso en autoinicializacion ]: {e}")
 
         print("=" * 60)
-        print("[ Sistema de Gestion Escolar - Servidor Iniciado Correctamente ]")
+        print("[ Sistema de Gestion Escolar - Autoinicialización Completada ]")
         print("[ Credenciales de Acceso: admin / admin2026 ]")
         print("=" * 60)
 
-    # Abre el navegador automaticamente
-    try:
-        webbrowser.open("http://127.0.0.1:5000")
-    except Exception:
-        pass
+    # NOTA: Se eliminó la instrucción webbrowser.open para evitar que 
+    # el programa abra ventanas o pestañas nuevas automáticamente en la PC.
 
-    # Forzamos modo de produccion (debug=False) para evitar el reinicio en el ejecutable
-    app.run(
-        debug=False,
-        host='0.0.0.0',
-        port=5000
-    )
+    try:
+        from waitress import serve
+        print("🚀 Servidor de producción (Waitress) iniciado en http://0.0.0.0:5000")
+        print("Presiona Ctrl+C para detener.")
+        serve(app, host='0.0.0.0', port=5000, threads=6)
+    except ImportError:
+        print("⚠️ Waitress no encontrado. Ejecutando servidor Flask de respaldo...")
+        app.run(debug=False, host='0.0.0.0', port=5000)

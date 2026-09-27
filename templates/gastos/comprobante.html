@@ -3,6 +3,13 @@
 {% block title %}Comprobante de Egreso #{{ gasto.id }}{% endblock %}
 
 {% block content %}
+<!-- BARRA DE ACCIÓN SUPERIOR (Oculta al imprimir) -->
+<div style="margin-bottom: 20px;" class="no-print">
+    <a href="/caja/" class="btn btn-outline-secondary rounded-pill px-4" style="background-color: #f8f9fa; color: #2c3e50; border: 1px solid #bdc3c7; padding: 6px 15px; text-decoration: none; font-size: 13px; font-weight: bold; display: inline-block;">
+        <i class="bi bi-arrow-left me-1"></i> Volver a Caja y Pagos
+    </a>
+</div>
+
 <!-- Cabecera propia del modelo de Gastos -->
 <div style="width: 100%; border-bottom: 2px solid #2c3e50; padding-bottom: 15px; margin-bottom: 20px; display: table;">
     <div style="display: table-cell; vertical-align: middle; width: 20%; text-align: center; font-weight: bold; font-size: 11px; border: 1px dashed #7f8c8d; padding: 10px; background: #fdfdfd;">
@@ -71,7 +78,10 @@
 </div>
 
 <script>
-    // Sobrescribir el botón de retroceso específicamente para gastos
-    document.querySelector('.btn-back').setAttribute('href', "{{ url_for('gastos.index') }}");
+    // Asegurar que el botón de retroceso global o específico apunte a caja
+    const btnBack = document.querySelector('.btn-back');
+    if (btnBack) {
+        btnBack.setAttribute('href', "/caja/");
+    }
 </script>
 {% endblock %}

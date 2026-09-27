@@ -457,60 +457,79 @@
         }
 
         /* ===================================================== */
-        /* IMPRESIÓN */
+        /* IMPRESIÓN PROFESIONAL EN BLANCO Y NEGRO CON MEMBRETE */
         /* ===================================================== */
 
         @media print {
             .no-print,
             nav, .navbar, #sidebar, .sidebar, footer, .footer,
             .btn, .btn-group, form button, a.btn,
-            .topbar, #sidebarOverlay {
+            .topbar, #sidebarOverlay, .badge {
                 display: none !important;
             }
 
+            .print-institutional-header {
+                display: block !important;
+            }
+
             @page {
-                margin: 0.5cm;
+                margin: 1cm;
                 size: auto;
             }
 
             html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
                 height: auto !important;
                 overflow: visible !important;
+                font-size: 12pt !important;
             }
 
-            .wrapper {
-                height: auto !important;
-                overflow: visible !important;
-                display: block !important;
-            }
-
-            .main-content {
-                width: 100% !important;
-            }
-
-            .content-area {
-                overflow: visible !important;
-                padding: 0 !important;
-            }
-
-            body {
-                margin: 0;
-                padding: 0;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-
-            .container, .container-fluid {
-                max-width: 100% !important;
+            .wrapper, .main-content, .content-area, .container, .container-fluid {
+                background: #ffffff !important;
+                color: #000000 !important;
                 width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                display: block !important;
             }
 
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
+            /* Forzar tarjetas y contenedores a fondo blanco y bordes negros limpios */
+            .card, .card-body, .card-header {
+                background: #ffffff !important;
+                color: #000000 !important;
+                box-shadow: none !important;
+                border: 1px solid #000000 !important;
+                border-radius: 0 !important;
             }
+
+            /* Tablas en formato clásico de impresión B/N */
+            table, .table {
+                width: 100% !important;
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                border-collapse: collapse !important;
+            }
+
+            .table th, .table td {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                border: 1px solid #000000 !important;
+                padding: 8px !important;
+            }
+
+            h1, h2, h3, h4, h5, h6, p, span, td, th {
+                color: #000000 !important;
+            }
+        }
+
+        /* Encabezado institucional exclusivo para impresión (oculto en pantalla normal) */
+        .print-institutional-header {
+            display: none;
+            width: 100%;
+            border-bottom: 2px solid #000000;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
         }
     </style>
 
@@ -547,7 +566,7 @@
 
     <div class="wrapper">
 
-       <!-- =============================================================== -->
+        <!-- =============================================================== -->
         <!-- MENÚ LATERAL SIN GRUPOS (COMPACTO) -->
         <!-- =============================================================== -->
 
@@ -664,14 +683,10 @@
                 </a>
                 {% endif %}
 
-                <a class="nav-link" href="/caja/">
-                    <i class="bi bi-cash-stack"></i>
-                    Control de Caja
-                </a>
-
-                <a class="nav-link" href="/gastos/">
-                    <i class="bi bi-receipt"></i>
-                    Gastos
+                <!-- ⭐ BOTÓN UNIFICADO MAESTRO -->
+                <a class="nav-link fw-bold text-info" href="/caja/">
+                    <i class="bi bi-wallet2"></i>
+                    Caja y Pagos
                 </a>
 
                 <div class="sidebar-separator"></div>
@@ -715,10 +730,10 @@
                     </button>
 
                     <!-- LOGO MINI EN LA TOPBAR (Forzado a crecer) -->
-<img src="{{ url_for('superadmin.ver_logo_institucion') }}?v={{ nombre_logo }}" 
-     alt="Logo" 
-     class="bg-white rounded-circle p-1 shadow-sm" 
-     style="width: 60px !important; height: 60px !important; min-width: 60px !important; min-height: 60px !important; max-height: none !important; object-fit: contain;">
+                    <img src="{{ url_for('superadmin.ver_logo_institucion') }}?v={{ nombre_logo }}" 
+                         alt="Logo" 
+                         class="bg-white rounded-circle p-1 shadow-sm" 
+                         style="width: 60px !important; height: 60px !important; min-width: 60px !important; min-height: 60px !important; max-height: none !important; object-fit: contain;">
 
                     <h5 class="mb-0">
                     {% block page_title %}
@@ -736,6 +751,8 @@
 
             <!-- Área de trabajo -->
             <div class="content-area">
+
+                
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}

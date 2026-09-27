@@ -27,6 +27,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'mp3', 
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 # ==============================================================================
 # FUNCIONES PARA MANEJAR ARCHIVOS ADJUNTOS LOCALES
 # ==============================================================================
@@ -54,15 +55,12 @@ def ruta_local_segura(ruta):
 
     ruta = ruta.strip()
 
-    # Si viene como URL completa, por ejemplo:
-    # http://127.0.0.1:5000/static/boletines/archivo.pdf
     parsed = urlparse(ruta)
     if parsed.scheme:
         ruta = parsed.path
 
     ruta = ruta.replace('\\', '/')
 
-    # Normalizar rutas que contienen /static/
     if '/static/' in ruta:
         ruta = ruta.split('/static/', 1)[1]
     elif ruta.startswith('static/'):
@@ -71,7 +69,6 @@ def ruta_local_segura(ruta):
     static_root = os.path.abspath(current_app.static_folder)
     filepath = os.path.abspath(os.path.join(static_root, ruta))
 
-    # Seguridad: evitar que se pueda acceder fuera de static
     if not filepath.startswith(static_root):
         return None
 
@@ -79,51 +76,64 @@ def ruta_local_segura(ruta):
         return None
 
     return filepath
+
 def ahora_bolivia():
     """Devuelve la fecha/hora actual en zona horaria Bolivia (UTC-4)"""
     return datetime.now(BOLIVIA_TZ)
 
+def verificar_mora_estricta(estudiante_id):
+    """
+    Verifica si el estudiante tiene mora utilizando la única fuente de verdad:
+    evaluando la pensión base frente a los meses escolares transcurridos.
+    """
+    est = Estudiante.query.get(estudiante_id)
+    if not est:
+        return False
+        
+    pension_base = float(est.pension or 0.0)
+    if pension_base <= 0:
+        return False
+        
+    meses_escolares = ["Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre"]
+    anio_actual = ahora_bolivia().year
+    
+    pagos_est = Pago.query.filter_by(estudiante_id=estudiante_id, anio=anio_actual).all()
+    pagos_map = {p.mes.strip().capitalize(): p for p in pagos_est if p.mes}
+    
+    monto_mora = 0.0
+    for mes in meses_escolares:
+        if mes in pagos_map:
+            p = pagos_map[mes]
+            saldo_mes = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
+            if saldo_mes > 0:
+                monto_mora += saldo_mes
+        else:
+            monto_mora += pension_base
+            
+    return monto_mora > 0
+
 def personalizar_texto_mensaje(texto_base, estudiante, padre, calificaciones=None, materias=None):
-    """Reemplaza los comodines [Tutor], [Estudiante], etc. por los datos reales del alumno."""
+    """Reemplaza los comodines por los datos reales y delega el resumen al PDF oficial."""
     if not texto_base:
         return ""
         
     texto = texto_base
     nombre_tutor = padre.nombres if padre and padre.nombres else 'Padre de Familia'
     
-    # 1. Corrección de saludos dobles y nombres
+    # 1. Corrección de saludos y nombres
     texto = texto.replace('Sr./Sra. Sr./Sra. [Tutor]', f'Sr./Sra. {nombre_tutor}')
     texto = texto.replace('Sr./Sra. [Tutor]', f'Sr./Sra. {nombre_tutor}')
     texto = texto.replace('[Tutor]', nombre_tutor)
     
     # 2. Datos del estudiante
     texto = texto.replace('[Estudiante]', f"{estudiante.nombres} {estudiante.apellidos}")
-    texto = texto.replace('[Curso]', estudiante.curso)
+    texto = texto.replace('[Curso]', estudiante.curso or 'S/C')
     
-    # 3. Cálculos académicos precisos para el Boletín
-    materias_aprobadas = 0
-    materias_reprobadas = 0
-    promedios = []
-    
-    if calificaciones and materias:
-        for mat in materias:
-            notas = [c.nota for c in calificaciones if c.materia_id == mat.id]
-            if notas:
-                prom = sum(notas) / len(notas)
-                promedios.append(prom)
-                if prom >= 51:
-                    materias_aprobadas += 1
-                else:
-                    materias_reprobadas += 1
-                    
-        promedio_final = f"{sum(promedios)/len(promedios):.2f}" if promedios else "0.00"
-    else:
-        promedio_final = "0.00"
-
-    texto = texto.replace('Promedio General: N/A', f'Promedio General: {promedio_final}')
-    texto = texto.replace('Materias aprobadas: 0', f'Materias aprobadas: {materias_aprobadas}')
-    texto = texto.replace('Materias reprobadas: 0', f'Materias reprobadas: {materias_reprobadas}')
-    
+    # 3. Solución "Única Fuente de Verdad" para evitar contradicciones con el PDF
+    if "RESUMEN ACADÉMICO:" in texto:
+        partes = texto.split("RESUMEN ACADÉMICO:")
+        texto = partes[0] + "RESUMEN ACADÉMICO:\n• Por favor, descargue y revise el documento PDF adjunto para visualizar el promedio oficial, las calificaciones detalladas y el estado final de aprobación de materias con total precisión."
+        
     return texto
 
 # =========================================================================
@@ -261,14 +271,14 @@ def index():
         mensajes = [m for m in mensajes if filtro_tipo.lower() in (m.tipo_mensaje or '').lower()]
 
     return render_template('chat/index.html',
-                         mensajes=mensajes,
-                         total_mensajes=total_mensajes,
-                         total_comprobantes=total_comprobantes,
-                         total_faltas=total_faltas,
-                         total_citaciones=total_citaciones,
-                         total_felicitaciones=total_felicitaciones,
-                         total_boletines=total_boletines,
-                         filtro_actual=filtro_tipo)
+                           mensajes=mensajes,
+                           total_mensajes=total_mensajes,
+                           total_comprobantes=total_comprobantes,
+                           total_faltas=total_faltas,
+                           total_citaciones=total_citaciones,
+                           total_felicitaciones=total_felicitaciones,
+                           total_boletines=total_boletines,
+                           filtro_actual=filtro_tipo)
 
 # =========================================================================
 # ENVIAR MENSAJE (Individual o Masivo con Plantillas y Archivos)
@@ -282,7 +292,6 @@ def enviar():
             modo_envio = request.form.get('modo_envio', 'individual')
             archivo_path_manual = None
 
-            # Manejo SEGURO de archivo adjunto subido manualmente
             if 'archivo' in request.files:
                 file = request.files['archivo']
                 if file and file.filename != '' and allowed_file(file.filename):
@@ -306,12 +315,12 @@ def enviar():
                         materias = Materia.query.all()
                         
                         if tipo_mensaje == 'Boletín':
-                            tiene_deuda = Pago.query.filter_by(estudiante_id=est.id, estado='Pendiente').first()
-                            if tiene_deuda:
-                                continue # FILTRO ANTI-MOROSOS
+                            if verificar_mora_estricta(est.id):
+                                continue # FILTRO ANTI-MOROSOS ESTRICTO
                                 
                             pdf_bytes = generar_boletin_pdf(est, calificaciones, materias)
-                            ruta_pdf = guardar_boletin_localmente(pdf_bytes, est.id, ahora_bolivia().year, est.rude)
+                            nombre_archivo = guardar_boletin_localmente(pdf_bytes, est.id, ahora_bolivia().year, est.rude)
+                            ruta_pdf = f"/static/boletines/{nombre_archivo}"
                             
                             texto_limpio = personalizar_texto_mensaje(contenido_base, est, padre, calificaciones, materias)
                             contenido_final = f"{texto_limpio}\n\n---ARCHIVO_ADJUNTO---{ruta_pdf}"
@@ -354,12 +363,12 @@ def enviar():
                         materias = Materia.query.all()
                         
                         if tipo_mensaje == 'Boletín':
-                            tiene_deuda = Pago.query.filter_by(estudiante_id=est.id, estado='Pendiente').first()
-                            if tiene_deuda:
-                                continue # FILTRO ANTI-MOROSOS
+                            if verificar_mora_estricta(est.id):
+                                continue # FILTRO ANTI-MOROSOS ESTRICTO
                                 
                             pdf_bytes = generar_boletin_pdf(est, calificaciones, materias)
-                            ruta_pdf = guardar_boletin_localmente(pdf_bytes, est.id, ahora_bolivia().year, est.rude)
+                            nombre_archivo = guardar_boletin_localmente(pdf_bytes, est.id, ahora_bolivia().year, est.rude)
+                            ruta_pdf = f"/static/boletines/{nombre_archivo}"
                             
                             texto_limpio = personalizar_texto_mensaje(contenido_base, est, padre, calificaciones, materias)
                             contenido_final = f"{texto_limpio}\n\n---ARCHIVO_ADJUNTO---{ruta_pdf}"
@@ -385,7 +394,7 @@ def enviar():
                 flash(f'✅ Mensaje enviado a {count} padres del curso {curso}.', 'success')
 
             # -------------------------------------------------------------
-            # MASIVO MOROSOS (Mantiene lógica original, sin PDF)
+            # MASIVO MOROSOS
             # -------------------------------------------------------------
             elif modo_envio == 'masivo_morosos':
                 pagos_pendientes = Pago.query.filter_by(estado='Pendiente').all()
@@ -442,8 +451,14 @@ def enviar():
                     materias = Materia.query.all()
                     
                     if tipo_mensaje == 'Boletín':
+                        if verificar_mora_estricta(est.id):
+                            flash(f'❌ El estudiante {est.nombres} {est.apellidos} tiene mora pendiente. No se puede enviar el boletín.', 'danger')
+                            return redirect(url_for('chat.enviar'))
+                            
                         pdf_bytes = generar_boletin_pdf(est, calificaciones, materias)
-                        ruta_pdf = guardar_boletin_localmente(pdf_bytes, est.id, ahora_bolivia().year, est.rude)
+                        nombre_archivo = guardar_boletin_localmente(pdf_bytes, est.id, ahora_bolivia().year, est.rude)
+                        ruta_pdf = f"/static/boletines/{nombre_archivo}"
+                        
                         texto_limpio = personalizar_texto_mensaje(contenido_base, est, padre, calificaciones, materias)
                         contenido_final = f"{texto_limpio}\n\n---ARCHIVO_ADJUNTO---{ruta_pdf}"
                     else:
@@ -479,9 +494,9 @@ def enviar():
     cursos = [c[0] for c in cursos]
     
     return render_template('chat/enviar.html',
-                         estudiantes=estudiantes,
-                         cursos=cursos,
-                         plantillas=PLANTILLAS)
+                           estudiantes=estudiantes,
+                           cursos=cursos,
+                           plantillas=PLANTILLAS)
 
 # =========================================================================
 # ENVIAR MENSAJE RÁPIDO DESDE VENTANA DE CHAT (conversacion.html)
@@ -504,7 +519,6 @@ def enviar_mensaje(estudiante_id):
                 file.save(filepath)
                 archivo_path_manual = f"/static/uploads/chat/{filename}"
         
-        # Limpieza rápida por si enviaron texto de plantilla sin editar
         texto_limpio = personalizar_texto_mensaje(contenido_base, estudiante, padre)
         
         if archivo_path_manual:
@@ -515,7 +529,7 @@ def enviar_mensaje(estudiante_id):
         msg = Mensaje(
             destinatario=padre.nombres if padre else 'Padre de Familia',
             estudiante_id=estudiante.id,
-            telefono=padre.telefono1 if padre else 'Sin teléfono',
+            telefono=padre.telefono1 or 'Sin teléfono',
             tipo_mensaje='General',
             contenido=contenido_final,
             remitente='Colegio'
@@ -529,7 +543,7 @@ def enviar_mensaje(estudiante_id):
     return redirect(url_for('chat.conversacion', estudiante_id=estudiante_id))
 
 # =========================================================================
-# API: OBTENER DATOS DEL ESTUDIANTE PARA PLANTILLA (CON NOTAS Y DEUDAS)
+# API: OBTENER DATOS DEL ESTUDIANTE PARA PLANTILLA (CON MORA Y DEUDAS UNIFICADAS)
 # =========================================================================
 @chat_bp.route('/api/datos_estudiante/<int:id>')
 def api_datos_estudiante(id):
@@ -539,64 +553,51 @@ def api_datos_estudiante(id):
     
     padre = Padre.query.filter_by(estudiante_id=id).first()
     
-    # Obtener deuda si existe
-    pagos_pendientes = Pago.query.filter_by(estudiante_id=id, estado='Pendiente').all()
-    deuda = sum((p.monto_total - (p.descuento or 0)) for p in pagos_pendientes)
-    meses_pendientes = ', '.join(list(set(p.mes for p in pagos_pendientes)))
+    # Motor unificado de meses escolares para la mora
+    meses_escolares = ["Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre"]
+    anio_actual = ahora_bolivia().year
+    pension_base = float(est.pension or 0.0)
     
-    # Obtener calificaciones para boletín
-    calificaciones = Calificacion.query.filter_by(estudiante_id=id).all()
-    materias = Materia.query.all()
+    pagos_est = Pago.query.filter_by(estudiante_id=id, anio=anio_actual).all()
+    pagos_map = {p.mes.strip().capitalize(): p for p in pagos_est if p.mes}
     
-    promedio = 0
-    materias_aprobadas = 0
-    materias_reprobadas = 0
-    mejor_materia = 'N/A'
-    nota_mejor = 0
+    monto_mora = 0.0
+    meses_adeudados = []
     
-    if calificaciones:
-        notas_por_materia = {}
-        for cal in calificaciones:
-            if cal.materia_id not in notas_por_materia:
-                notas_por_materia[cal.materia_id] = []
-            notas_por_materia[cal.materia_id].append(cal.nota)
-        
-        promedios = []
-        for mat_id, notas in notas_por_materia.items():
-            prom_mat = sum(notas) / len(notas)
-            promedios.append(prom_mat)
-            if prom_mat >= 51:
-                materias_aprobadas += 1
+    if pension_base > 0:
+        for mes in meses_escolares:
+            if mes in pagos_map:
+                p = pagos_map[mes]
+                saldo_mes = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
+                if saldo_mes > 0:
+                    monto_mora += saldo_mes
+                    meses_adeudados.append(mes)
             else:
-                materias_reprobadas += 1
-            
-            if prom_mat > nota_mejor:
-                nota_mejor = prom_mat
-                materia_obj = Materia.query.get(mat_id)
-                mejor_materia = materia_obj.nombre if materia_obj else 'N/A'
-        
-        promedio = sum(promedios) / len(promedios) if promedios else 0
+                monto_mora += pension_base
+                meses_adeudados.append(mes)
+                
+    meses_pendientes = ', '.join(meses_adeudados)
     
     return jsonify({
         'tutor': padre.nombres if padre else 'Padre de Familia',
         'estudiante': f"{est.nombres} {est.apellidos}",
-        'curso': est.curso,
+        'curso': est.curso or 'S/C',
         'telefono': padre.telefono1 if padre else '',
-        'mes': meses_pendientes or 'N/A',
-        'monto': f"{deuda:.2f}" if deuda > 0 else '0.00',
+        'mes': meses_pendientes or 'Ninguno',
+        'monto': f"{monto_mora:.2f}" if monto_mora > 0 else '0.00',
         'fecha': ahora_bolivia().strftime('%d/%m/%Y'),
         'hora': ahora_bolivia().strftime('%H:%M'),
-        'gestion': ahora_bolivia().year,
-        'promedio': f"{promedio:.2f}",
-        'materias_aprobadas': materias_aprobadas,
-        'materias_reprobadas': materias_reprobadas,
-        'mejor_materia': mejor_materia,
-        'nota_mejor': f"{nota_mejor:.2f}"
+        'gestion': anio_actual,
+        'promedio': "Ver PDF oficial",
+        'materias_aprobadas': "Ver PDF oficial",
+        'materias_reprobadas': "Ver PDF oficial",
+        'mejor_materia': "Ver PDF oficial",
+        'nota_mejor': "Ver PDF oficial"
     })
+
 # ==============================================================================
 # DESCARGAR ARCHIVO ADJUNTO DE UN MENSAJE DEL CHAT
 # ==============================================================================
-
 @chat_bp.route('/adjunto/<int:mensaje_id>/descargar')
 def descargar_adjunto(mensaje_id):
     mensaje = Mensaje.query.get_or_404(mensaje_id)
@@ -626,6 +627,7 @@ def descargar_adjunto(mensaje_id):
         as_attachment=True,
         download_name=nombre_archivo
     )
+
 # =========================================================================
 # ELIMINAR MENSAJE
 # =========================================================================

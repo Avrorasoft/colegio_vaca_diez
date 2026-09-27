@@ -13,12 +13,10 @@ from utils_pdf import ruta_logo, nombre_institucion
 
 BOLIVIA_TZ = timezone(timedelta(hours=-4))
 
-def guardar_boletin_localmente(estudiante, pdf_bytes):
+def guardar_boletin_localmente(pdf_bytes, est_id, anio_actual, est_rude):
     try:
-        anio_actual = datetime.now(BOLIVIA_TZ).year
-        est_id = getattr(estudiante, 'id', '0')
-        est_ci = getattr(estudiante, 'ci', 'S_CI')
-        filename = f"boletin_{est_id}_{anio_actual}_{est_ci}.pdf"
+        # Ahora utiliza el RUDE y el orden exacto que envía chat.py
+        filename = f"boletin_{est_id}_{anio_actual}_{est_rude}.pdf"
         boletines_dir = os.path.join(os.getcwd(), 'static', 'boletines')
         os.makedirs(boletines_dir, exist_ok=True)
         filepath = os.path.join(boletines_dir, filename)

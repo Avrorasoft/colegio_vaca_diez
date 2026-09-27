@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
-from models import db, Padre, Estudiante, Mensaje, Pago, Calificacion
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_from_directory
+from models import db, Padre, Estudiante, Mensaje, Pago, Calificacion, ahora_bolivia
 from functools import wraps
 from datetime import datetime, timezone, timedelta
 import os
 from werkzeug.utils import secure_filename
 
 portal_padres_bp = Blueprint('portal_padres', __name__, template_folder='templates/portal_padres')
-
-BOLIVIA_TZ = timezone(timedelta(hours=-4))
 
 def login_required_padre(f):
     @wraps(f)
@@ -54,23 +52,62 @@ def logout():
 def dashboard():
     padre = Padre.query.get_or_404(session['padre_id'])
     estudiante = Estudiante.query.get(padre.estudiante_id)
-    mensajes = Mensaje.query.filter_by(estudiante_id=estudiante.id).order_by(Mensaje.fecha_envio.desc()).limit(10).all()
-    pagos_pendientes = Pago.query.filter_by(estudiante_id=estudiante.id, estado='Pendiente').all()
-    monto_pendiente = sum((p.monto_total - (p.descuento or 0)) for p in pagos_pendientes)
+    mensajes_recientes = Mensaje.query.filter_by(estudiante_id=estudiante.id).order_by(Mensaje.fecha_envio.desc()).limit(10).all()
+    
+    # ---------------------------------------------------------------------
+    # CÁLCULO DE MORA Y MESES ADEUDADOS
+    # ---------------------------------------------------------------------
+    meses_escolares = ["Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre"]
+    anio_actual = 2026
+    pension_base = float(estudiante.pension or 0.0)
+    
+    pagos_est = Pago.query.filter_by(estudiante_id=estudiante.id, anio=anio_actual).all()
+    pagos_map = {p.mes.strip().capitalize(): p for p in pagos_est if p.mes}
+    
+    monto_mora = 0.0
+    meses_adeudados = []
+    
+    if pension_base > 0:
+        for mes in meses_escolares:
+            if mes in pagos_map:
+                p = pagos_map[mes]
+                saldo_mes = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
+                if saldo_mes > 0:
+                    monto_mora += saldo_mes
+                    meses_adeudados.append(mes)
+            else:
+                monto_mora += pension_base
+                meses_adeudados.append(mes)
+                
+    detalle_meses = ", ".join(meses_adeudados)
+    # ---------------------------------------------------------------------
+    
+    todos_los_pagos = Pago.query.filter_by(estudiante_id=estudiante.id).all()
+    pagos_pendientes = []
+    
+    for p in todos_los_pagos:
+        estado = str(p.estado or '').strip().lower()
+        if estado != 'pagado':
+            saldo = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
+            if saldo > 0:
+                pagos_pendientes.append(p)
+                
     return render_template('portal_padres/dashboard.html', 
                          padre=padre, 
                          estudiante=estudiante, 
-                         mensajes=mensajes, 
+                         mensajes_recientes=mensajes_recientes, 
                          pagos_pendientes=pagos_pendientes, 
-                         monto_pendiente=monto_pendiente)
+                         monto_pendiente=monto_mora,
+                         monto_mora=monto_mora,
+                         detalle_meses=detalle_meses)
 
 @portal_padres_bp.route('/mensajes')
 @login_required_padre
 def mensajes():
     padre = Padre.query.get_or_404(session['padre_id'])
     estudiante = Estudiante.query.get(padre.estudiante_id)
-    mensajes = Mensaje.query.filter_by(estudiante_id=estudiante.id).order_by(Mensaje.fecha_envio.desc()).all()
-    return render_template('portal_padres/mensajes.html', mensajes=mensajes, estudiante=estudiante)
+    mensajes_lista = Mensaje.query.filter_by(estudiante_id=estudiante.id).order_by(Mensaje.fecha_envio.desc()).all()
+    return render_template('portal_padres/mensajes.html', mensajes=mensajes_lista, estudiante=estudiante)
 
 @portal_padres_bp.route('/ver_mensaje/<int:id>')
 @login_required_padre
@@ -96,13 +133,12 @@ def nuevo_mensaje():
                     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
                 
                 if allowed_file(file.filename):
-                    filename = secure_filename(f"padre_{padre.id}_{int(datetime.now(BOLIVIA_TZ).timestamp())}_{file.filename}")
+                    filename = secure_filename(f"padre_{padre.id}_{int(ahora_bolivia().timestamp())}_{file.filename}")
                     upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'chat')
                     os.makedirs(upload_folder, exist_ok=True)
                     filepath = os.path.join(upload_folder, filename)
                     file.save(filepath)
                     
-                    # ✅ CORRECCIÓN CRÍTICA: Guardar URL ABSOLUTA completa
                     base_url = request.host_url.rstrip('/')
                     archivo_url = f"{base_url}/static/uploads/chat/{filename}"
         
@@ -119,7 +155,7 @@ def nuevo_mensaje():
                     contenido_final = f"---ARCHIVO_ADJUNTO---\n{archivo_url}"
             
             mensaje = Mensaje(
-                destinatario='Colegio Dr. Antonio Vaca Díez',
+                destinatario='Institución Educativa',
                 estudiante_id=estudiante.id,
                 telefono=padre.telefono1 or padre.telefono2 or 'Sin teléfono',
                 tipo_mensaje='Mensaje de Padre',
@@ -129,7 +165,7 @@ def nuevo_mensaje():
             db.session.add(mensaje)
             db.session.commit()
             
-            flash('✅ Mensaje enviado correctamente al colegio', 'success')
+            flash('✅ Mensaje enviado correctamente a la institución', 'success')
             return redirect(url_for('portal_padres.mensajes'))
             
         except Exception as e:
@@ -158,13 +194,12 @@ def responder_mensaje(id):
                 return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
             
             if allowed_file(file.filename):
-                filename = secure_filename(f"padre_{padre.id}_{int(datetime.now(BOLIVIA_TZ).timestamp())}_{file.filename}")
+                filename = secure_filename(f"padre_{padre.id}_{int(ahora_bolivia().timestamp())}_{file.filename}")
                 upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'chat')
                 os.makedirs(upload_folder, exist_ok=True)
                 filepath = os.path.join(upload_folder, filename)
                 file.save(filepath)
                 
-                # ✅ CORRECCIÓN CRÍTICA: Guardar URL ABSOLUTA completa
                 base_url = request.host_url.rstrip('/')
                 archivo_url = f"{base_url}/static/uploads/chat/{filename}"
     
@@ -181,7 +216,7 @@ def responder_mensaje(id):
                 contenido_final = f"---ARCHIVO_ADJUNTO---\n{archivo_url}"
         
         respuesta = Mensaje(
-            destinatario='Colegio Dr. Antonio Vaca Díez',
+            destinatario='Institución Educativa',
             estudiante_id=estudiante.id,
             telefono=padre.telefono1 or padre.telefono2 or 'Sin teléfono',
             tipo_mensaje='Respuesta de Padre',
@@ -191,7 +226,7 @@ def responder_mensaje(id):
         db.session.add(respuesta)
         db.session.commit()
         
-        flash('✅ Respuesta enviada correctamente al colegio', 'success')
+        flash('✅ Respuesta enviada correctamente a la institución', 'success')
         return redirect(url_for('portal_padres.mensajes'))
         
     except Exception as e:
@@ -205,41 +240,78 @@ def responder_mensaje(id):
 def ver_boletin():
     padre = Padre.query.get_or_404(session['padre_id'])
     estudiante = Estudiante.query.get(padre.estudiante_id)
-    filename = f"boletin_{estudiante.id}_{datetime.now(BOLIVIA_TZ).year}_{estudiante.rude}.pdf"
-    filepath = os.path.join(os.getcwd(), 'static', 'boletines', filename)
+    filename = f"boletin_{estudiante.id}_{ahora_bolivia().year}_{estudiante.rude}.pdf"
+    
+    boletines_dir = os.path.join(current_app.root_path, 'static', 'boletines')
+    filepath = os.path.join(boletines_dir, filename)
     
     if not os.path.exists(filepath):
         flash('⚠️ El boletín aún no ha sido generado por la administración', 'warning')
         return redirect(url_for('portal_padres.dashboard'))
     
-    return render_template('portal_padres/ver_boletin.html', 
-                         estudiante=estudiante, 
-                         boletin_url=f"/static/boletines/{filename}", 
-                         boletin_filename=filename)
+    return send_from_directory(boletines_dir, filename, as_attachment=True)
 
 @portal_padres_bp.route('/pagos')
 @login_required_padre
 def pagos():
     padre = Padre.query.get_or_404(session['padre_id'])
     estudiante = Estudiante.query.get(padre.estudiante_id)
-    pagos = Pago.query.filter_by(estudiante_id=estudiante.id).order_by(Pago.fecha_pago.desc()).all()
-    pagos_pendientes = Pago.query.filter_by(estudiante_id=estudiante.id, estado='Pendiente').all()
-    monto_pendiente = sum((p.monto_total - (p.descuento or 0)) for p in pagos_pendientes)
+    pagos = Pago.query.filter_by(estudiante_id=estudiante.id).order_by(Pago.anio.desc(), Pago.id.desc()).all()
+    
+    # ---------------------------------------------------------------------
+    # CÁLCULO DE MORA Y MESES ADEUDADOS
+    # ---------------------------------------------------------------------
+    meses_escolares = ["Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre"]
+    anio_actual = 2026
+    pension_base = float(estudiante.pension or 0.0)
+    
+    pagos_anio = Pago.query.filter_by(estudiante_id=estudiante.id, anio=anio_actual).all()
+    pagos_map = {p.mes.strip().capitalize(): p for p in pagos_anio if p.mes}
+    
+    monto_mora = 0.0
+    meses_adeudados = []
+    
+    if pension_base > 0:
+        for mes in meses_escolares:
+            if mes in pagos_map:
+                p = pagos_map[mes]
+                saldo_mes = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
+                if saldo_mes > 0:
+                    monto_mora += saldo_mes
+                    meses_adeudados.append(mes)
+            else:
+                monto_mora += pension_base
+                meses_adeudados.append(mes)
+                
+    detalle_meses = ", ".join(meses_adeudados)
+    # ---------------------------------------------------------------------
+
+    estado_pagos = {}
+    
+    for p in pagos:
+        estado = str(p.estado or '').strip().lower()
+        if estado != 'pagado':
+            saldo = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
+            if saldo > 0:
+                estado_pagos[p.id] = True 
+            else:
+                estado_pagos[p.id] = False
+        else:
+            estado_pagos[p.id] = False
+
     return render_template('portal_padres/pagos.html', 
                          estudiante=estudiante, 
                          pagos=pagos, 
-                         pagos_pendientes=pagos_pendientes, 
-                         monto_pendiente=monto_pendiente)
+                         estado_pagos=estado_pagos,
+                         monto_mora=monto_mora,
+                         monto_pendiente_actual=0.0,
+                         detalle_meses=detalle_meses)
+
 @portal_padres_bp.route('/descargar_archivo/<path:filename>')
 @login_required_padre
 def descargar_archivo(filename):
-    """Sirve archivos adjuntos del chat de forma segura."""
-    from flask import send_from_directory
     upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'chat')
-    
-    # Verificar que el archivo existe
     if not os.path.exists(os.path.join(upload_folder, filename)):
         flash('❌ El archivo no existe o fue eliminado', 'danger')
         return redirect(url_for('portal_padres.mensajes'))
-    
-    return send_from_directory(upload_folder, filename, as_attachment=False)
+    return send_from_directory(upload_folder, filename, as_attachment=True)

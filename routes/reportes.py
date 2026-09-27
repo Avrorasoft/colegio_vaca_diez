@@ -22,15 +22,15 @@ def economico_manana():
         flash('Debe iniciar sesión para ver los reportes.', 'warning')
         return redirect(url_for('auth.login_turno'))
     
-    # 1. Ingresos del Turno Mañana
-    pagos = Pago.query.filter_by(turno_responsable='Mañana', estado='Pagado').order_by(Pago.fecha_pago.desc()).all()
+    # 1. Ingresos del Turno Mañana (Incluyendo abonos donde monto_pagado > 0)
+    pagos = Pago.query.filter(Pago.turno_responsable == 'Mañana', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
     total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos: Gastos Operativos
+    # 2. Egresos: Gastos Operativos[cite: 2]
     gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 
-    # 3. Egresos: Pagos al Personal
+    # 3. Egresos: Pagos al Personal[cite: 2]
     pagos_personal = PagoPersonal.query.all()
     total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
@@ -56,15 +56,15 @@ def economico_tarde():
         flash('Debe iniciar sesión para ver los reportes.', 'warning')
         return redirect(url_for('auth.login_turno'))
 
-    # 1. Ingresos del Turno Tarde
-    pagos = Pago.query.filter_by(turno_responsable='Tarde', estado='Pagado').order_by(Pago.fecha_pago.desc()).all()
+    # 1. Ingresos del Turno Tarde (Incluyendo abonos donde monto_pagado > 0)
+    pagos = Pago.query.filter(Pago.turno_responsable == 'Tarde', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
     total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos: Gastos Operativos
+    # 2. Egresos: Gastos Operativos[cite: 2]
     gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 
-    # 3. Egresos: Pagos al Personal
+    # 3. Egresos: Pagos al Personal[cite: 2]
     pagos_personal = PagoPersonal.query.all()
     total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
@@ -90,14 +90,14 @@ def economico_general():
         flash('Debe iniciar sesión para ver los reportes.', 'warning')
         return redirect(url_for('auth.login_turno'))
 
-    # 1. Ingresos Generales
-    pagos = Pago.query.filter_by(estado='Pagado').order_by(Pago.fecha_pago.desc()).all()
+    # 1. Ingresos Generales (Incluyendo abonos donde monto_pagado > 0)
+    pagos = Pago.query.filter(Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
     total_general = sum(p.monto_pagado for p in pagos)
     
     total_manana = sum(p.monto_pagado for p in pagos if p.turno_responsable == 'Mañana')
     total_tarde = sum(p.monto_pagado for p in pagos if p.turno_responsable == 'Tarde')
 
-    # 2. Egresos Generales (Gastos y Personal)
+    # 2. Egresos Generales (Gastos y Personal)[cite: 2]
     gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 
