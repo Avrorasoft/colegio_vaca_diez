@@ -8,6 +8,7 @@ Desarrollado por: Avrora Soft - Vibola LLC
 """
 
 import os
+import subprocess
 import sys
 import webbrowser
 import secrets
@@ -705,8 +706,38 @@ LOGIN_TEMPLATE = """
 
 def create_app():
     """Funcion fabrica requerida por run.py para inicializar la aplicacion."""
+    verificar_y_lanzar_cloudflare(app)
     return app
 
+def verificar_y_lanzar_cloudflare(app):
+    """Lanza el túnel de Cloudflare de forma portable usando el binario en la raíz."""
+    try:
+        with app.app_context():
+            from models import ConfiguracionSuperadmin
+            cfg = ConfiguracionSuperadmin.query.filter_by(clave='cloudflare_tunnel_token').first()
+            token = cfg.valor.strip() if cfg and cfg.valor else ''
+            
+            if token and token != 'N/A':
+                ruta_cloudflared = os.path.join(app.root_path, 'cloudflared.exe')
+                
+                if os.path.exists(ruta_cloudflared):
+                    comando = [ruta_cloudflared, "tunnel", "run", "--token", token]
+                    subprocess.Popen(
+                        comando,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                    )
+                    print("=" * 60)
+                    print("[ CLOUDFLARED ]: Túnel portátil iniciado desde la raíz con éxito.")
+                    print("=" * 60)
+                else:
+                    print("[ AVISO ]: cloudflared.exe no se encontró en la raíz del proyecto.")
+            else:
+                print("[ MODO OFFLINE ]: No se detectó token de Cloudflare configurado.")
+    except Exception as e:
+        print(f"[ ERROR ]: No se pudo iniciar Cloudflare ({e})")
+        
 if __name__ == '__main__':
     valido, mensaje_licencia = comprobar_licencia_local()
     
@@ -760,8 +791,8 @@ if __name__ == '__main__':
         print("[ Credenciales de Acceso: admin / admin2026 ]")
         print("=" * 60)
 
-    # NOTA: Se eliminó la instrucción webbrowser.open para evitar que 
-    # el programa abra ventanas o pestañas nuevas automáticamente en la PC.
+    # Lanzar el túnel portátil de Cloudflare de forma automática
+    verificar_y_lanzar_cloudflare(app)
 
     try:
         from waitress import serve

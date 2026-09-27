@@ -29,7 +29,6 @@
     </style>
 </head>
 <body>
-    {# LECTURA ESTRICTA E INMUTABLE DEL TURNO REGISTRADO EN LA BD BASADO EN LA TRANSACCIÓN BASE #}
     {% set turno_cajero = (pago_base.turno_responsable or '')|lower|trim %}
     {% set es_tarde = ('tarde' in turno_cajero) %}
     {% set es_manana = ('mañana' in turno_cajero or 'manana' in turno_cajero) %}
@@ -42,8 +41,8 @@
     <div class="comprobante">
         <div class="header">
             <div>
-                <h2>[NOMBRE DE LA INSTITUCIÓN]</h2>
-                <p>Sistema Integrado de Gestión Institucional | [Ciudad] - [País]</p>
+                <h2>{{ membrete.linea1 if membrete.linea1 else '[NOMBRE DE LA INSTITUCIÓN]' }}</h2>
+                <p>{{ membrete.linea2 if membrete.linea2 else 'Sistema Integrado de Gestión Institucional' }} | {{ membrete.ciudad if membrete.ciudad else '[Ciudad]' }}</p>
                 <p style="font-weight: bold; color: #0284c7;">COMPROBANTE OFICIAL DE COBRO EN CAJA</p>
             </div>
             <div class="badge-folio">
@@ -90,7 +89,6 @@
                 </tr>
             </thead>
             <tbody>
-                {# ⭐ BUCLE PARA MOSTRAR TODOS LOS MESES PAGADOS EN ESTA TRANSACCIÓN #}
                 {% for pago in pagos %}
                 <tr>
                     <td>

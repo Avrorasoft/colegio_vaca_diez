@@ -1,4 +1,3 @@
-from decorators import profesor_autorizado_requerido
 # -*- coding: utf-8 -*-
 """
 ==============================================================================
@@ -19,10 +18,11 @@ import io
 from sqlalchemy.orm import joinedload, aliased
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, session, jsonify
 from models import (
-  db, Estudiante, Padre, Pago, Calificacion, Materia, Egresado,
-  HistorialCalificacion, Mensaje,
-  CURSOS_POR_NIVEL, NIVELES, TURNOS, nivel_de_curso
+    db, Estudiante, Padre, Pago, Calificacion, Materia, Egresado,
+    HistorialCalificacion, Mensaje, ConfiguracionSuperadmin,
+    CURSOS_POR_NIVEL, NIVELES, TURNOS, nivel_de_curso
 )
+from decorators import profesor_autorizado_requerido
 
 estudiantes_bp = Blueprint('estudiantes', __name__)
 
@@ -1439,27 +1439,80 @@ def crear_curso():
 
 
 # ==============================================================================
+# FUNCIÓN INTERNA PARA OBTENER DATOS DE MEMBRETE (NEUTRA Y DINÁMICA)
+# ==============================================================================
+def obtener_datos_membrete_pdf():
+    """
+    Obtiene los datos institucionales de forma completamente neutra y limpia 
+    desde ConfiguracionSuperadmin para los motores de recibos y PDF.
+    """
+    datos = {
+        'linea1': '',
+        'linea2': '',
+        'linea3': '',
+        'direccion': '',
+        'telefono': '',
+        'email': '',
+        'ciudad': '',
+        'gestion': '',
+        'logo_path': None
+    }
+    
+    try:
+        configs = ConfiguracionSuperadmin.query.filter(
+            ConfiguracionSuperadmin.clave.like('institucion_%')
+        ).all()
+        
+        for c in configs:
+            clave_limpia = c.clave.replace('institucion_', '')
+            if clave_limpia == 'linea1':
+                datos['linea1'] = c.valor or ''
+            elif clave_limpia == 'linea2':
+                datos['linea2'] = c.valor or ''
+            elif clave_limpia == 'linea3':
+                datos['linea3'] = c.valor or ''
+            elif clave_limpia == 'direccion':
+                datos['direccion'] = c.valor or ''
+            elif clave_limpia == 'telefono':
+                datos['telefono'] = c.valor or ''
+            elif clave_limpia == 'email':
+                datos['email'] = c.valor or ''
+            elif clave_limpia == 'ciudad':
+                datos['ciudad'] = c.valor or ''
+            elif clave_limpia == 'gestion':
+                datos['gestion'] = c.valor or ''
+            elif clave_limpia == 'logo' and c.valor:
+                base_dir = current_app.root_path
+                ruta_logo = os.path.join(base_dir, 'static', 'uploads', c.valor)
+                if os.path.exists(ruta_logo):
+                    datos['logo_path'] = ruta_logo
+                    
+    except Exception as e:
+        print(f"[ AVISO MEMBRETE PDF ]: No se pudieron cargar los datos institucionales ({e})")
+        
+    return datos
+
+
+# ==============================================================================
 # IMPRESIÓN DE PAGOS: INDIVIDUAL Y TOTAL ACUMULADO
 # ==============================================================================
 
 @estudiantes_bp.route('/recibo_pago_individual/<int:pago_id>')
 def imprimir_recibo_individual(pago_id):
     """Genera la vista de impresión agrupando los pagos de la misma transacción."""
-    # 1. Obtener el pago base que gatilló el recibo
     pago_base = Pago.query.get_or_404(pago_id)
     
-    # 2. Buscar todos los pagos del mismo estudiante con la misma fecha/hora exacta
     pagos_transaccion = Pago.query.filter_by(
         estudiante_id=pago_base.estudiante_id, 
         fecha_pago=pago_base.fecha_pago
     ).all()
     
-    # 3. Sumar el total general de esta transacción
     total_general = sum(float(p.monto_pagado or 0.0) for p in pagos_transaccion)
     
-    # 4. Obtener datos del estudiante y tutor
     est = Estudiante.query.get_or_404(pago_base.estudiante_id)
     padre = Padre.query.filter_by(estudiante_id=est.id).first()
+    
+    membrete = obtener_datos_membrete_pdf()
     
     return render_template(
         'estudiantes/recibo_pago_individual.html',
@@ -1467,7 +1520,8 @@ def imprimir_recibo_individual(pago_id):
         pago_base=pago_base,
         total_general=total_general,
         est=est,
-        padre=padre
+        padre=padre,
+        membrete=membrete
     )
 
 @estudiantes_bp.route('/historial_pagos/<int:estudiante_id>/imprimir')
@@ -1476,7 +1530,6 @@ def imprimir_historial_pagos(estudiante_id):
     est = Estudiante.query.get_or_404(estudiante_id)
     padre = Padre.query.filter_by(estudiante_id=est.id).first()
     
-    # Traer TODOS los pagos (Abonos, Pensiones y Conceptos)
     pagos = Pago.query.filter_by(
         estudiante_id=estudiante_id
     ).order_by(Pago.fecha_pago.asc(), Pago.id.asc()).all()
@@ -1484,13 +1537,16 @@ def imprimir_historial_pagos(estudiante_id):
     total_recaudado = sum(float(p.monto_pagado or 0.0) for p in pagos)
     total_descuentos = sum(float(p.descuento or 0.0) for p in pagos)
 
+    membrete = obtener_datos_membrete_pdf()
+
     return render_template(
         'estudiantes/historial_pagos_imprimir.html',
         est=est, 
         padre=padre, 
         pagos=pagos,
         total_recaudado=total_recaudado, 
-        total_descuentos=total_descuentos
+        total_descuentos=total_descuentos,
+        membrete=membrete
     )
 
 # ==============================================================================

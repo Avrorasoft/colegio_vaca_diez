@@ -790,7 +790,7 @@ def iniciar_scheduler_informes(app):
                         hoy = ahora.date()
                         generar_informe_diario(hoy)
                         if ahora.weekday() == 6:
-                            generar_informe_semanal(hoy)
+                            gener_informe_semanal(hoy)
                         if (hoy + timedelta(days=1)).day == 1:
                             generar_informe_mensual(hoy.year, hoy.month)
             except Exception as e:
@@ -805,6 +805,38 @@ def iniciar_scheduler_informes(app):
 def _registrar_scheduler_informes(state):
     iniciar_scheduler_informes(state.app)
 
+# =========================================================================
+# GESTIÓN AVANZADA DE TÚNEL CLOUDFLARE (TARJETA 9)
+# =========================================================================
+
+@superadmin_bp.route('/cloudflare/guardar-avanzado', methods=['POST'])
+def guardar_config_cloudflare_avanzada():
+    if not check_superadmin():
+        return redirect(url_for('dashboard.index'))
+        
+    token = request.form.get('cloudflare_token', '').strip()
+    url_tunel = request.form.get('cloudflare_url', '').strip()
+    
+    try:
+        config_token = ConfiguracionSuperadmin.query.filter_by(clave='cloudflare_tunnel_token').first()
+        if config_token:
+            config_token.valor = token
+        else:
+            db.session.add(ConfiguracionSuperadmin(clave='cloudflare_tunnel_token', valor=token, descripcion='Token de túnel Cloudflare'))
+            
+        config_url = ConfiguracionSuperadmin.query.filter_by(clave='cloudflare_tunnel_url').first()
+        if config_url:
+            config_url.valor = url_tunel
+        else:
+            db.session.add(ConfiguracionSuperadmin(clave='cloudflare_tunnel_url', valor=url_tunel, descripcion='URL pública de Cloudflare'))
+            
+        db.session.commit()
+        flash('✅ Parámetros de Cloudflare guardados correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Error al guardar la configuración de red: {str(e)}', 'danger')
+        
+    return redirect(url_for('superadmin.boveda'))
 
 # =========================================================================
 # PLANTILLAS HTML INFORMES
