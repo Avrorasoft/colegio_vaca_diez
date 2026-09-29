@@ -220,11 +220,6 @@ def index():
     # El único destino al abrir el programa es el login obligatorio.
     return redirect(url_for('login_sistema'))
 
-# Alias de compatibilidad global: Redirige /login a /login-sistema
-@app.route('/login')
-def redirect_login_raiz():
-    return redirect(url_for('login_sistema'))
-
 @app.route('/logout')
 def global_logout():
     """Cierra cualquier sesion activa y redirige al login obligatorio."""
@@ -272,7 +267,8 @@ def _obtener_configuracion_institucion():
 
 @app.before_request
 def proteger_acceso_global():
-    """Protege TODA la aplicacion exigiendo contrasena obligatoria en la PC."""
+    """Protege TODA la aplicacion exigiendo contrasena obligatoria en la PC, 
+    permitiendo el acceso a los portales públicos (Padres, Profesores, PWA)."""
     
     # 1. Verificar si la institucion esta configurada primero
     if not _esta_configurado():
@@ -282,10 +278,12 @@ def proteger_acceso_global():
 
     path = request.path
 
-    # 2. ÚNICAS excepciones técnicas permitidas sin autenticación
+    # 2. ÚNICAS excepciones técnicas y portales públicos permitidos sin la contraseña general de PC
     if (path.startswith('/static') or 
         path.startswith('/uploads') or 
-        path == '/login' or 
+        path.startswith('/portal-padres') or 
+        path.startswith('/profesor-portal') or 
+        path.startswith('/pwa') or 
         path == '/login-sistema' or 
         path == '/setup'):
         return None

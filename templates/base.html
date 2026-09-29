@@ -641,7 +641,7 @@
 
                 <!-- Reportes de Caja -->
                 <div class="nav-item dropdown px-3 my-1">
-                    <a class="nav-link dropdown-toggle p-0" href="#" data-bs-toggle="dropdown">
+                    <a class="nav-link dropdown-toggle p-0" href="javascript:void(0);" data-bs-toggle="dropdown">
                         <i class="bi bi-file-earmark-bar-graph"></i> Reportes de Caja
                     </a>
                     <ul class="dropdown-menu">
@@ -699,11 +699,6 @@
                 <a class="nav-link" href="{{ url_for('estudiantes.lista_egresados') }}">
                     <i class="bi bi-archive-fill"></i>
                     Registro de Egresados
-                </a>
-
-                <a class="nav-link" href="/profesor-portal/login">
-                    <i class="bi bi-door-open-fill"></i>
-                    Portal de Profesores
                 </a>
 
                 <div class="sidebar-separator"></div>
@@ -831,7 +826,37 @@
     </script>
 
     {% block extra_scripts %}{% endblock %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const precargados = new Set();
 
+        function precargarPagina(url) {
+            if (!url || precargados.has(url) || url.startsWith('javascript:') || url.includes('#')) return;
+            precargados.add(url);
+            
+            // Petición silenciosa en segundo plano para almacenar en caché
+            fetch(url, { method: 'GET', mode: 'no-cors' })
+                .catch(() => {
+                    // Silenciar errores de red si la ruta es externa o no disponible temporalmente
+                });
+        }
+
+        // Detectar cuando el usuario pasa el mouse o toca un enlace para precargarlo al instante
+        document.querySelectorAll('a[href]').forEach(function(enlace) {
+            let url = enlace.getAttribute('href');
+            // Solo aplicamos a enlaces internos de la aplicación
+            if (url && (url.startsWith('/') || url.includes(window.location.hostname))) {
+                enlace.addEventListener('mouseenter', function() {
+                    precargarPagina(url);
+                }, { once: true }); // Se ejecuta una sola vez por enlace para optimizar recursos
+                
+                enlace.addEventListener('touchstart', function() {
+                    precargarPagina(url);
+                }, { once: true });
+            }
+        });
+    });
+</script>
 </body>
 
 </html>

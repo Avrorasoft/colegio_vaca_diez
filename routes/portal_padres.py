@@ -42,11 +42,9 @@ def login():
 
 @portal_padres_bp.route('/logout')
 def logout():
-    session.pop('padre_id', None)
-    session.pop('padre_nombre', None)
-    flash('👋 Sesión cerrada correctamente', 'info')
+    session.clear()
+    flash('Sesión cerrada correctamente.', 'info')
     return redirect(url_for('portal_padres.login'))
-
 @portal_padres_bp.route('/dashboard')
 @login_required_padre
 def dashboard():

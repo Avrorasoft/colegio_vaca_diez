@@ -112,7 +112,7 @@
             });
         }).catch(error => {
             console.error('Error:', error);
-            container.innerHTML = '<div class="loading">No se pudo visualizar.<br><br><a href="' + pdfUrl + '" class="btn-download">⬇️ Descargar PDF directamente</a></div>';
+            container.innerHTML = '<div class="loading">No se pudo visualizar.<br><br><a href="' + (pdfUrl || '#') + '" class="btn-download" onclick="if(!this.getAttribute(\'href\') || this.getAttribute(\'href\')===\'#\') return false;">⬇️ Descargar PDF directamente</a></div>';
         });
     </script>
 </body>
