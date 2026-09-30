@@ -1,32 +1,26 @@
-# Archivos de Cloudflared y ejecutables pesados
-cloudflared.exe
-*.exe
-*.zip
+# Entorno virtual de Python
+venv/
+env/
+ENV/
 
-# Credenciales y archivos secretos
-.secret_key
-.credenciales_iniciales.txt
-.env
-
-# Bases de datos y archivos temporales de SQLite
-*.db
-*.sqlite3
-instance/*.db-shm
-instance/*.db-wal
-
-# Caché de Python
+# Archivos de caché de Python
 __pycache__/
+*.py[cod]
+*$py.class
 *.pyc
 
-# Entornos virtuales
-venv/
+# Base de datos local (SQLite)
+*.db
+*.sqlite3
+instance/
 
-# Carpetas de datos generados y subidas de usuarios
-static/uploads/
-static/recibos/
-static/boletines/
-static/recibos_personal/*.pdf
-logs/
+# Archivos de sesión y variables de entorno
+.env
+.flaskenv
 
-# Archivos de la aplicación
-*.avr
+# Logs y volcados de depuración
+*.log
+
+# Archivos de configuración de editores
+.vscode/
+.idea/

@@ -155,6 +155,9 @@ def bloquear_transacciones_sin_turno():
 from routes.admin_envios import admin_envios_bp
 app.register_blueprint(admin_envios_bp)
 
+from routes.admin_profesores_chat import admin_profesores_chat_bp
+app.register_blueprint(admin_profesores_chat_bp)
+
 from routes.auth import auth_bp
 csrf.exempt(auth_bp)
 app.register_blueprint(auth_bp)

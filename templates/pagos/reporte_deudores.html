@@ -63,7 +63,7 @@
             <h3 class="fw-bold text-dark mb-1">
                 <i class="bi bi-exclamation-octagon-fill text-danger me-2"></i>Reporte Institucional de Deudores
             </h3>
-            <p class="text-muted mb-0">Gestión Escolar {{ anio_actual }} &bull; Meses evaluados: Febrero a Septiembre</p>
+            <p class="text-muted mb-0">Gestión Escolar {{ anio_actual }} &bull; Meses evaluados: Febrero a Noviembre</p>
         </div>
         <div class="d-flex gap-2">
             <button onclick="window.print();" class="btn btn-outline-secondary">
@@ -115,9 +115,15 @@
         {% set curso_id = 'curso_' ~ loop.index %}
         <div class="card border-0 shadow-sm rounded-3 mb-4 seccion-curso" id="{{ curso_id }}">
             
-            <!-- Membrete institucional al imprimir solo este curso -->
+            <!-- Membrete institucional al imprimir solo este curso (Dinámico y Genérico) -->
             <div class="encabezado-impresion-curso p-3 border-bottom text-center">
-                <h4 class="fw-bold mb-0">COLEGIO DR. ANTONIO VACA DÍEZ</h4>
+                <h4 class="fw-bold mb-0">
+                    {% if institucion and institucion.get('institucion_linea1') %}
+                        {{ institucion.get('institucion_linea1') }}
+                    {% else %}
+                        SISTEMA DE GESTIÓN ESCOLAR
+                    {% endif %}
+                </h4>
                 <p class="small text-muted mb-1">Reporte Oficial de Estudiantes con Pensiones Pendientes &bull; Gestión {{ anio_actual }}</p>
                 <h5 class="fw-bold text-dark mt-2 mb-0">CURSO: {{ curso|upper }}</h5>
             </div>
@@ -148,7 +154,6 @@
                             <th class="text-center">Meses Mora</th>
                             <th class="text-end">Monto Adeudado</th>
                             <th class="pe-3">Detalle de Meses</th>
-                            <!-- Nueva columna para la acción de cobrar -->
                             <th class="text-center d-print-none">Acción</th>
                         </tr>
                     </thead>
@@ -162,7 +167,6 @@
                             <td class="text-end fw-bold text-danger">Bs. {{ "{:,.2f}".format(r.deuda) }}</td>
                             <td class="pe-3 small text-muted">{{ r.detalle_meses }}</td>
                             
-                            <!-- Botón interactivo de cobro blindado contra errores -->
                             <td class="text-center d-print-none">
                                 {% set est_id = r.get('estudiante_id') or r.get('id') or r.get('id_estudiante') %}
                                 {% if est_id %}
@@ -170,7 +174,7 @@
                                         <i class="bi bi-cash-coin me-1"></i>Cobrar
                                     </a>
                                 {% else %}
-                                    <a href="/estudiantes/" class="btn btn-sm btn-warning shadow-sm" title="El ID no se cargó en el reporte. Búscalo en el cárdex.">
+                                    <a href="/estudiantes/" class="btn btn-sm btn-warning shadow-sm" title="Buscar en cárdex">
                                         <i class="bi bi-search me-1"></i>Buscar
                                     </a>
                                 {% endif %}
@@ -199,7 +203,6 @@ function imprimirCursoSolo(elementId) {
     const cursoElem = document.getElementById(elementId);
     if (!cursoElem) return;
 
-    // Crear ventana aislada para evitar conflictos con el DOM principal
     const ventanaImpresion = window.open('', '_blank', 'width=900,height=650');
     ventanaImpresion.document.write('<!DOCTYPE html><html><head><title>Impresión de Curso</title>');
     ventanaImpresion.document.write('<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">');
@@ -215,7 +218,6 @@ function imprimirCursoSolo(elementId) {
     ventanaImpresion.document.close();
     ventanaImpresion.focus();
 
-    // Esperar renderizado y disparar diálogo de impresión
     setTimeout(function() {
         ventanaImpresion.print();
         ventanaImpresion.close();

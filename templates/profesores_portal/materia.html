@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "profesores_portal/base.html" %}
 
 {% block content %}
 <style>
@@ -123,7 +123,7 @@
         </div>
     </div>
 
-    <!-- Planilla de Calificaciones (Añadido novalidate para evitar bloqueos del navegador) -->
+    <!-- Planilla de Calificaciones -->
     <form method="POST" action="{{ url_for('profesores_portal.guardar_notas_matriz', materia_id=materia.id) }}" id="formPlanillaNotas" novalidate>
         <input type="hidden" name="periodo" value="{{ periodo_sel }}">
 
@@ -193,7 +193,6 @@
                                         {% for c in criterios %}
                                             {% set reg_cal = cal_matrix.get((est.id, c.nombre)) %}
                                             <td class="text-center">
-                                                <!-- Usamos type="text" para evitar validaciones nativas restrictivas del navegador -->
                                                 <input 
                                                     type="text" 
                                                     name="criterio_{{ est.id }}_{{ c.id }}" 
@@ -295,12 +294,11 @@
             });
         });
 
-        // Limpieza al enviar para garantizar que los campos vacíos no generen bloqueos ni errores
         if (form) {
             form.addEventListener('submit', function() {
                 inputs.forEach(inp => {
                     if (inp.value.trim() === '') {
-                        inp.disabled = true; // Ignora celdas vacías para permitir guardado parcial libre
+                        inp.disabled = true;
                     }
                 });
             });

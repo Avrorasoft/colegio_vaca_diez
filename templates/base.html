@@ -691,9 +691,15 @@
 
                 <div class="sidebar-separator"></div>
 
-                <a class="nav-link" href="/chat/">
+                <!-- MÓDULOS DE COMUNICACIÓN RESCATADOS -->
+                <a class="nav-link text-warning" href="{{ url_for('admin_profesores_chat.gestionar_chat_profesores') }}">
+                    <i class="bi bi-chat-heart-fill"></i>
+                    <span>Chat con Profesores</span>
+                </a>
+
+                <a class="nav-link" href="{{ url_for('chat.index') }}">
                     <i class="bi bi-chat-dots-fill"></i>
-                    Chat con Padres
+                    <span>Chat con Padres</span>
                 </a>
 
                 <a class="nav-link" href="{{ url_for('estudiantes.lista_egresados') }}">
@@ -751,8 +757,6 @@
 
             <!-- Área de trabajo -->
             <div class="content-area">
-
-                
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
