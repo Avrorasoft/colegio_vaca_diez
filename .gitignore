@@ -24,3 +24,5 @@ instance/
 # Archivos de configuración de editores
 .vscode/
 .idea/
+cloudflared.exe
+

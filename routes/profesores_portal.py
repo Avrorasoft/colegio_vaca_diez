@@ -2,27 +2,42 @@
 """
 ==============================================================================
 Archivo: routes/profesores_portal.py
+<<<<<<< HEAD
 Proyecto: ASestud-Konetz - Sistema de Gestión Escolar
 Desarrollado por: Avrora Soft - Vibola LLC
 Descripción: Portal docente con distinción exacta entre Sueldos Íntegros Pagados
              y Retenciones/Adelantos Parciales.
+=======
+Proyecto: Sistema de Gestión Escolar - Multi-Tenant / Genérico
+Desarrollado por: Avrora Soft - Vibola LLC
+Descripción: Portal docente con motor de precedencia de rúbricas:
+             1. Precedencia Específica: Criterios propios de la materia.
+             2. Precedencia General: Rúbrica general del nivel.
+             Soporte avanzado de múltiples respaldos documentales y galería.
+>>>>>>> 869003bb7c96b3e63d02701807514151b703b476
 ==============================================================================
 """
 
+import os
 import json
 from functools import wraps
 from datetime import datetime, date
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, session, abort
+    flash, session, abort, current_app, send_from_directory
 )
 from werkzeug.security import check_password_hash
+from werkzeug.utils import secure_filename
 
 # Modelos centralizados del sistema
 from models import (
     db, Profesor, Materia, Estudiante, Calificacion,
+<<<<<<< HEAD
     CriterioEvaluacion, nivel_de_curso, Pago, PagoPersonal
+=======
+    CriterioEvaluacion, RespaldoEstudiante, nivel_de_curso
+>>>>>>> 869003bb7c96b3e63d02701807514151b703b476
 )
 
 # Importación segura de comunicados
@@ -60,6 +75,13 @@ profesores_portal_bp = Blueprint(
     __name__
 )
 
+# Carpeta independiente para los respaldos documentales y fotográficos de los profesores
+UPLOAD_FOLDER_RESPALDOS = 'static/uploads/respaldos_docentes'
+
+def allowed_file(filename):
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx', 'xls', 'xlsx'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 def login_requerido(f):
     @wraps(f)
@@ -72,6 +94,14 @@ def login_requerido(f):
 
 
 def obtener_criterios_materia(materia_id):
+<<<<<<< HEAD
+=======
+    """
+    Motor de precedencia de evaluación institucional:
+    - Nivel 1: Criterios específicos asignados directamente a la materia.
+    - Nivel 2: Criterios generales configurados para el nivel.
+    """
+>>>>>>> 869003bb7c96b3e63d02701807514151b703b476
     materia = Materia.query.get(materia_id)
     if not materia:
         return [], 'general', False, 'Primaria'
@@ -125,6 +155,13 @@ def obtener_criterios_materia(materia_id):
 
 
 def recalcular_nota_final(materia_id, periodo='1er Trimestre'):
+<<<<<<< HEAD
+=======
+    """
+    Calcula la sumatoria sobre 100 puntos y genera el desglose JSON.
+    Se omite en régimen cualitativo.
+    """
+>>>>>>> 869003bb7c96b3e63d02701807514151b703b476
     criterios, origen, es_nidito, nivel = obtener_criterios_materia(materia_id)
     if es_nidito:
         return
@@ -534,7 +571,8 @@ def ver_materia(materia_id):
         periodo_sel=periodo_sel,
         cal_matrix=cal_matrix,
         notas_finales=notas_finales,
-        periodos=['1er Trimestre', '2do Trimestre', '3er Trimestre']
+        periodos=['1er Trimestre', '2do Trimestre', '3er Trimestre'],
+        RespaldoEstudiante=RespaldoEstudiante
     )
 
 
@@ -563,6 +601,23 @@ def guardar_notas_matriz(materia_id):
     for est in estudiantes:
         desglose_est = {}
         total_est = 0.0
+
+        # Procesamiento de subida múltiple de archivos de respaldo por estudiante
+        archivos_respaldo = request.files.getlist(f"respaldo_{est.id}")
+        for archivo_respaldo in archivos_respaldo:
+            if archivo_respaldo and allowed_file(archivo_respaldo.filename):
+                filename = secure_filename(f"respaldo_est_{est.id}_mat_{materia_id}_{int(datetime.now().timestamp())}_{archivo_respaldo.filename}")
+                os.makedirs(UPLOAD_FOLDER_RESPALDOS, exist_ok=True)
+                path_completo = os.path.join(UPLOAD_FOLDER_RESPALDOS, filename)
+                archivo_respaldo.save(path_completo)
+                
+                nuevo_respaldo = RespaldoEstudiante(
+                    estudiante_id=est.id,
+                    materia_id=materia_id,
+                    periodo=periodo,
+                    filename=filename
+                )
+                db.session.add(nuevo_respaldo)
 
         for crit in criterios:
             campo_nombre = f"criterio_{est.id}_{crit.id}"
@@ -666,10 +721,41 @@ def guardar_notas_matriz(materia_id):
         contador += 1
 
     db.session.commit()
-    flash(f'✅ Calificaciones guardadas correctamente ({contador} estudiantes) para el {periodo}.', 'success')
+    flash(f'✅ Calificaciones y respaldos guardados correctamente ({contador} estudiantes) para el {periodo}.', 'success')
     return redirect(url_for('profesores_portal.ver_materia', materia_id=materia_id, periodo=periodo))
 
 
+<<<<<<< HEAD
+=======
+@profesores_portal_bp.route('/ver_respaldo/<filename>')
+@login_requerido
+def ver_respaldo(filename):
+    """Permite visualizar o descargar de forma segura cualquier archivo adjuntado."""
+    return send_from_directory(os.path.join(current_app.root_path, UPLOAD_FOLDER_RESPALDOS), filename)
+
+
+@profesores_portal_bp.route('/eliminar_respaldo/<int:respaldo_id>', methods=['POST'])
+@login_requerido
+def eliminar_respaldo(respaldo_id):
+    """Elimina un archivo de respaldo individual desde la galería modal del estudiante."""
+    respaldo = RespaldoEstudiante.query.get_or_404(respaldo_id)
+    materia_id = respaldo.materia_id
+    
+    try:
+        path_completo = os.path.join(current_app.root_path, UPLOAD_FOLDER_RESPALDOS, respaldo.filename)
+        if os.path.exists(path_completo):
+            os.remove(path_completo)
+    except Exception:
+        pass
+    
+    db.session.delete(respaldo)
+    db.session.commit()
+    flash('🗑️ Archivo de respaldo eliminado correctamente de la galería.', 'info')
+    return redirect(url_for('profesores_portal.ver_materia', materia_id=materia_id))
+
+
+# Bloqueo de mutación de rúbricas desde el portal docente
+>>>>>>> 869003bb7c96b3e63d02701807514151b703b476
 @profesores_portal_bp.route('/nueva_evaluacion/<int:materia_id>', methods=['POST'])
 @login_requerido
 def nueva_evaluacion(materia_id):
