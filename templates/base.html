@@ -715,10 +715,16 @@
 
                 <div class="sidebar-separator"></div>
 
-                <a class="nav-link text-danger" href="{{ url_for('auth.logout') }}" onclick="return confirm('¿Cerrar sesión de todo el sistema?');">
-                    <i class="bi bi-box-arrow-left"></i>
-                    Cerrar Sesión
-                </a>
+                <!-- CERRAR SESIÓN DEL SISTEMA -->
+                <div class="px-3 my-1">
+                    <form action="{{ url_for('auth.logout') }}" method="POST" class="m-0 p-0" onsubmit="return confirm('¿Cerrar sesión de todo el sistema?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="nav-link text-danger btn btn-link p-0 border-0 d-flex align-items-center gap-2" style="text-decoration: none; background: none; box-shadow: none;">
+                            <i class="bi bi-box-arrow-left"></i>
+                            <span>Cerrar Sesión</span>
+                        </button>
+                    </form>
+                </div>
             </div>
         </nav>
 

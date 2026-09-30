@@ -121,7 +121,7 @@ def login_turno():
             
     return render_template('auth/login_turno.html')
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 def logout():
     session.clear()
     flash('🔒 Has cerrado sesión correctamente.', 'info')
