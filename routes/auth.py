@@ -125,13 +125,13 @@ def login_turno():
 def logout():
     session.clear()
     flash('🔒 Has cerrado sesión correctamente.', 'info')
-    return redirect(url_for('auth.login'))
+    return redirect('/login-sistema')
 
 @auth_bp.route('/logout-turno')
 def logout_turno():
     session.clear()
     flash('🔒 Sesión cerrada correctamente.', 'info')
-    return redirect(url_for('auth.login'))
+    return redirect('/login-sistema')
 
 @auth_bp.route('/sistema/reset-fabrica', methods=['POST'])
 def reset_fabrica():
@@ -211,7 +211,7 @@ def reset_fabrica():
 
         session.clear()
         
-        response = make_response(redirect(url_for('auth.login')))
+        response = make_response(redirect('/login-sistema'))
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
@@ -221,4 +221,4 @@ def reset_fabrica():
     except Exception as e:
         db.session.rollback()
         flash(f'❌ Error crítico al restablecer el sistema: {str(e)}', 'danger')
-        return redirect(url_for('auth.login'))
+        return redirect('/login-sistema')
