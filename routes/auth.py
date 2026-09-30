@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ==============================================================================
 Archivo: routes/auth.py
@@ -127,11 +127,11 @@ def logout():
     flash('🔒 Has cerrado sesión correctamente.', 'info')
     return redirect('/login-sistema')
 
-@auth_bp.route('/logout-turno')
+@auth_bp.route('/logout-turno', methods=['POST'])
 def logout_turno():
-    session.clear()
-    flash('🔒 Sesión cerrada correctamente.', 'info')
-    return redirect('/login-sistema')
+    session.pop('turno_activo', None)
+    flash('🔒 Turno cerrado correctamente.', 'info')
+    return redirect(url_for('dashboard.index'))
 
 @auth_bp.route('/sistema/reset-fabrica', methods=['POST'])
 def reset_fabrica():
