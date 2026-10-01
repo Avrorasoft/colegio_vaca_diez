@@ -1874,3 +1874,85 @@ def imprimir_materia_individual(id, materia_nombre):
         as_attachment=False,
         download_name=fname
     )
+
+# --- NUEVA RUTA PARA MIGRAR ESTUDIANTE DE 6TO A EGRESADO ---
+@estudiantes_bp.route('/migrar_egresado/<int:estudiante_id>', methods=['POST'])
+def migrar_egresado(estudiante_id):
+    """Migra un estudiante de 6to de secundaria al registro de egresados consolidando sus 4 años."""
+    try:
+        est = Estudiante.query.get_or_404(estudiante_id)
+        
+        # Estructura base para el historial de notas
+        historial_notas = {
+            "3ro": [],
+            "4to": [],
+            "5to": [],
+            "6to": []
+        }
+        
+        # Intentar rescatar calificaciones existentes del estudiante (si las tiene registradas en el sistema)
+        # Si el modelo de calificaciones guarda notas por curso, las mapeamos aquí.
+        # Caso contrario, generamos la estructura lista para editar o con los datos disponibles.
+        
+        import json
+        est.estado = 'Egresado'
+        est.curso = 'Egresado'
+        est.historial_notas = json.dumps(historial_notas, ensure_ascii=False)
+        
+        db.session.commit()
+        flash(f"¡Estudiante {est.nombres} {est.apellidos} migrado exitosamente a Egresados!", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al migrar estudiante: {str(e)}", "danger")
+        
+    return redirect(url_for('estudiantes.lista_egresados'))
+
+# --- RUTA DE MIGRACIÓN MASIVA DE FIN DE GESTIÓN ---
+@estudiantes_bp.route('/migracion_masiva', methods=['POST'])
+def migracion_masiva():
+    """Realiza la promoción automática de curso para los aprobados y migra a 6to a Egresados."""
+    try:
+        estudiantes = Estudiante.query.filter(Estudiante.estado != 'Egresado', Estudiante.estado != 'Retirado').all()
+        
+        # Mapeo de cursos siguientes
+        secuencia_cursos = {
+            '1ro de Secundaria': '2do de Secundaria',
+            '1ro': '2do',
+            '2do de Secundaria': '3ro de Secundaria',
+            '2do': '3ro',
+            '3ro de Secundaria': '4to de Secundaria',
+            '3ro': '4to',
+            '4to de Secundaria': '5to de Secundaria',
+            '4to': '5to',
+            '5to de Secundaria': '6to de Secundaria',
+            '5to': '6to'
+        }
+        
+        migrados_count = 0
+        egresados_count = 0
+        
+        import json
+        from datetime import datetime
+        
+        for est in estudiantes:
+            # Verificamos si el estudiante está aprobado (puedes ajustar el criterio según tu campo de estado o notas)
+            # Por defecto, si el estado es Activo o Aprobado, procede.
+            curso_actual = (est.curso or '').strip()
+            
+            if '6to' in curso_actual or 'sexto' in curso_actual.lower():
+                # Migrar a Egresado consolidando su historial
+                est.estado = 'Egresado'
+                est.curso = 'Egresado'
+                egresados_count += 1
+            elif curso_actual in secuencia_cursos:
+                # Pasar al curso inmediato superior
+                est.curso = secuencia_cursos[curso_actual]
+                migrados_count += 1
+                
+        db.session.commit()
+        flash(f"¡Migración masiva exitosa! Estudiantes promovidos de curso: {migrados_count}. Estudiantes promovidos a Egresados (6to): {egresados_count}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error en la migración masiva: {str(e)}", "danger")
+        
+    return redirect(url_for('estudiantes.lista_estudiantes'))

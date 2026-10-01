@@ -218,7 +218,33 @@ from routes.rubricas import rubricas_bp
 app.register_blueprint(rubricas_bp, url_prefix='/admin/rubricas')
 
 
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if not _esta_configurado():
+        return redirect(url_for('setup'))
+    
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password', '').strip()
+        clave_sistema = _obtener_clave('sistema_password', 'VacaDiez2026')
+
+        if password == clave_sistema:
+            session['sistema_autenticado'] = True
+            session['login_time'] = datetime.now().isoformat()
+            session.permanent = False
+            siguiente = request.args.get('next', url_for('dashboard.index'))
+            return redirect(siguiente)
+        else:
+            error = 'Contrasena incorrecta'
+
+    config = _obtener_configuracion_institucion()
+    nombre_institucion = config.get('institucion_linea1', 'Sistema de Gestion Escolar')
+
+    return render_template_string(LOGIN_TEMPLATE, error=error,
+                                  nombre_institucion=nombre_institucion,
+                                  config=config)
+
+
 def index():
     # El único destino al abrir el programa es el login obligatorio.
     return redirect(url_for('login_sistema'))
@@ -418,6 +444,7 @@ SETUP_TEMPLATE = """
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <style>
+    html { background-color: #0d1b2a !important; visibility: hidden; }
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -580,6 +607,8 @@ SETUP_TEMPLATE = """
             </form>
         </div>
     </div>
+
+<script>document.documentElement.style.visibility = 'visible';</script>
 </body>
 </html>
 """
@@ -707,38 +736,10 @@ LOGIN_TEMPLATE = """
 
 def create_app():
     """Funcion fabrica requerida por run.py para inicializar la aplicacion."""
-    verificar_y_lanzar_cloudflare(app)
+    # Cloudflare removido
     return app
 
-def verificar_y_lanzar_cloudflare(app):
-    """Lanza el túnel de Cloudflare de forma portable usando el binario en la raíz."""
-    try:
-        with app.app_context():
-            from models import ConfiguracionSuperadmin
-            cfg = ConfiguracionSuperadmin.query.filter_by(clave='cloudflare_tunnel_token').first()
-            token = cfg.valor.strip() if cfg and cfg.valor else ''
-            
-            if token and token != 'N/A':
-                ruta_cloudflared = os.path.join(app.root_path, 'cloudflared.exe')
-                
-                if os.path.exists(ruta_cloudflared):
-                    comando = [ruta_cloudflared, "tunnel", "run", "--token", token]
-                    subprocess.Popen(
-                        comando,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                    )
-                    print("=" * 60)
-                    print("[ CLOUDFLARED ]: Túnel portátil iniciado desde la raíz con éxito.")
-                    print("=" * 60)
-                else:
-                    print("[ AVISO ]: cloudflared.exe no se encontró en la raíz del proyecto.")
-            else:
-                print("[ MODO OFFLINE ]: No se detectó token de Cloudflare configurado.")
-    except Exception as e:
-        print(f"[ ERROR ]: No se pudo iniciar Cloudflare ({e})")
-        
+
 if __name__ == '__main__':
     valido, mensaje_licencia = comprobar_licencia_local()
     
@@ -793,7 +794,7 @@ if __name__ == '__main__':
         print("=" * 60)
 
     # Lanzar el túnel portátil de Cloudflare de forma automática
-    verificar_y_lanzar_cloudflare(app)
+    # Cloudflare removido
 
     try:
         from waitress import serve

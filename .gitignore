@@ -1,28 +1,10 @@
-# Entorno virtual de Python
 venv/
-env/
-ENV/
-
-# Archivos de caché de Python
 __pycache__/
-*.py[cod]
-*$py.class
 *.pyc
-
-# Base de datos local (SQLite)
-*.db
-*.sqlite3
 instance/
-
-# Archivos de sesión y variables de entorno
+*.db
 .env
-.flaskenv
-
-# Logs y volcados de depuración
-*.log
-
-# Archivos de configuración de editores
+.DS_Store
 .vscode/
-.idea/
-cloudflared.exe
-
+build/
+dist/

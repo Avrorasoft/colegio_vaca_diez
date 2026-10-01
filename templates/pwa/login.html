@@ -1,21 +1,24 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" style="background: #1e3c72;">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portal Familiar PWA - Colegio Dr. Antonio Vaca Díez</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Estilo crítico inline para evitar el parpadeo blanco del navegador -->
     <style>
-        body {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        html, body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important;
+            background-color: #1e3c72 !important;
             min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        body {
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             padding: 16px;
-            margin: 0;
         }
         .pwa-card {
             background: #ffffff;
@@ -73,6 +76,8 @@
             margin-bottom: 20px;
         }
     </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
 
@@ -103,7 +108,6 @@
         </div>
 
         <form method="POST" action="{{ url_for('pwa.login') }}">
-            <!-- Token CSRF requerido por Flask-WTF -->
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
             <div class="form-floating mb-3">

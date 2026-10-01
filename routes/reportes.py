@@ -9,28 +9,25 @@ consolidado general para caja única (Ingresos, Gastos y Pagos al Personal).
 ==============================================================================
 """
 
-from flask import Blueprint, render_template, session, redirect, url_for, flash
+from flask import Blueprint, render_template
 from models import db, Pago, Gasto, PagoPersonal
 from sqlalchemy import func, or_, and_
 
 reportes_bp = Blueprint('reportes', __name__, url_prefix='/reportes', template_folder='templates/reportes')
 
+
 @reportes_bp.route('/economico/manana')
 def economico_manana():
     """Reporte económico exclusivo del Turno Mañana (Ingresos y Egresos)"""
-    if 'turno_activo' not in session:
-        flash('Debe iniciar sesión para ver los reportes.', 'warning')
-        return redirect(url_for('auth.login_turno'))
-    
     # 1. Ingresos del Turno Mañana (Incluyendo abonos donde monto_pagado > 0)
     pagos = Pago.query.filter(Pago.turno_responsable == 'Mañana', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
     total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos: Gastos Operativos[cite: 2]
+    # 2. Egresos: Gastos Operativos
     gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 
-    # 3. Egresos: Pagos al Personal[cite: 2]
+    # 3. Egresos: Pagos al Personal
     pagos_personal = PagoPersonal.query.all()
     total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
@@ -49,22 +46,19 @@ def economico_manana():
                            titulo='Reporte Económico - Turno Mañana',
                            turno='Mañana')
 
+
 @reportes_bp.route('/economico/tarde')
 def economico_tarde():
     """Reporte económico exclusivo del Turno Tarde (Ingresos y Egresos)"""
-    if 'turno_activo' not in session:
-        flash('Debe iniciar sesión para ver los reportes.', 'warning')
-        return redirect(url_for('auth.login_turno'))
-
     # 1. Ingresos del Turno Tarde (Incluyendo abonos donde monto_pagado > 0)
     pagos = Pago.query.filter(Pago.turno_responsable == 'Tarde', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
     total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos: Gastos Operativos[cite: 2]
+    # 2. Egresos: Gastos Operativos
     gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 
-    # 3. Egresos: Pagos al Personal[cite: 2]
+    # 3. Egresos: Pagos al Personal
     pagos_personal = PagoPersonal.query.all()
     total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
@@ -83,13 +77,10 @@ def economico_tarde():
                            titulo='Reporte Económico - Turno Tarde',
                            turno='Tarde')
 
+
 @reportes_bp.route('/economico/general')
 def economico_general():
     """Reporte económico general consolidado (Mañana y Tarde - Ingresos y Egresos)"""
-    if 'turno_activo' not in session:
-        flash('Debe iniciar sesión para ver los reportes.', 'warning')
-        return redirect(url_for('auth.login_turno'))
-
     # 1. Ingresos Generales (Incluyendo abonos donde monto_pagado > 0)
     pagos = Pago.query.filter(Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
     total_general = sum(p.monto_pagado for p in pagos)
@@ -97,7 +88,7 @@ def economico_general():
     total_manana = sum(p.monto_pagado for p in pagos if p.turno_responsable == 'Mañana')
     total_tarde = sum(p.monto_pagado for p in pagos if p.turno_responsable == 'Tarde')
 
-    # 2. Egresos Generales (Gastos y Personal)[cite: 2]
+    # 2. Egresos Generales (Gastos y Personal)
     gastos = Gasto.query.all()
     total_gastos = sum(g.monto for g in gastos)
 

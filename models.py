@@ -587,29 +587,32 @@ class HistorialCalificacion(db.Model):
 
 
 # ==============================================================================
-# PORTAL DEL PROFESOR: TAREAS
+# PORTAL DEL PROFESOR: TAREAS Y SEGUIMIENTO PEDAGÓGICO (PIZARRA ESCOLAR)
 # ==============================================================================
 
 class Tarea(db.Model):
     __tablename__ = 'tareas'
+    __table_args__ = {'extend_existing': True}
 
     id = db.Column(db.Integer, primary_key=True)
     materia_id = db.Column(db.Integer, db.ForeignKey('materias.id'), nullable=False)
 
     titulo = db.Column(db.String(150), nullable=False)
-    descripcion = db.Column(db.Text, nullable=True)
+    indicaciones = db.Column(db.Text, nullable=False)
 
     fecha_asignacion = db.Column(db.DateTime, default=ahora_bolivia)
-    fecha_entrega = db.Column(db.Date, nullable=False)
+    fecha_entrega = db.Column(db.DateTime, nullable=False)
+    puntaje_maximo = db.Column(db.Float, default=100.0)
     archivo_adjunto = db.Column(db.String(255), nullable=True)
 
+    # Relación bidireccional con Materia
     materia = db.relationship(
         'Materia',
-        backref=db.backref('tareas', cascade='all, delete-orphan')
+        backref=db.backref('tareas', lazy=True, cascade='all, delete-orphan')
     )
 
     def __repr__(self):
-        return f"<Tarea {self.titulo}>"
+        return f"<Tarea {self.id}: {self.titulo} - Materia ID: {self.materia_id}>"
 
 
 # ==============================================================================
@@ -715,7 +718,7 @@ class InformeEconomico(db.Model):
 
 
 # ==============================================================================
-# CONFIGURACIÓN SUPERADMIN
+# CONFIGURACIÓN SUPERADMIN E INSTITUCIÓN
 # ==============================================================================
 
 class ConfiguracionSuperadmin(db.Model):
@@ -729,6 +732,7 @@ class ConfiguracionSuperadmin(db.Model):
 
 class ConfiguracionInstitucion(db.Model):
     __tablename__ = 'configuracion_institucion'
+
     id = db.Column(db.Integer, primary_key=True)
     institucion_linea1 = db.Column(db.String(150), default='Sistema de Gestión Escolar')
     institucion_linea2 = db.Column(db.String(150), default='')
@@ -805,3 +809,28 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA synchronous = NORMAL;")
     cursor.execute("PRAGMA busy_timeout = 5000;")
     cursor.close()
+
+
+# ==============================================================================
+# SEGUIMIENTO PEDAGÓGICO: ENTREGAS DE TAREAS
+# ==============================================================================
+
+class EntregaTarea(db.Model):
+    __tablename__ = 'entregas_tareas'
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    tarea_id = db.Column(db.Integer, db.ForeignKey('tareas.id'), nullable=False)
+    estudiante_id = db.Column(db.Integer, db.ForeignKey('estudiantes.id'), nullable=False)
+    fecha_presentacion = db.Column(db.DateTime, default=datetime.now)
+    archivo_respuesta = db.Column(db.String(255), nullable=True)
+    comentario_alumno = db.Column(db.Text, nullable=True)
+    calificacion = db.Column(db.Float, nullable=True)
+    retroalimentacion = db.Column(db.Text, nullable=True)
+
+    # Relaciones bidireccionales con Tarea y Estudiante
+    tarea = db.relationship('Tarea', backref=db.backref('entregas', lazy=True, cascade='all, delete-orphan'))
+    estudiante = db.relationship('Estudiante', backref=db.backref('entregas_tareas', lazy=True))
+
+    def __repr__(self):
+        return f"<EntregaTarea {self.tarea_id} - Estudiante ID: {self.estudiante_id}>"

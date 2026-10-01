@@ -154,14 +154,8 @@
             </div>
         </div>
     </div>
-
-<<<<<<< HEAD
-    <!-- Planilla de Calificaciones -->
-    <form method="POST" action="{{ url_for('profesores_portal.guardar_notas_matriz', materia_id=materia.id) }}" id="formPlanillaNotas" novalidate>
-=======
-    <!-- Planilla de Calificaciones con Soporte para Subida Múltiple -->
+<!-- Planilla de Calificaciones con Soporte para Subida Múltiple -->
     <form method="POST" action="{{ url_for('profesores_portal.guardar_notas_matriz', materia_id=materia.id) }}" enctype="multipart/form-data" id="formPlanillaNotas" novalidate>
->>>>>>> 869003bb7c96b3e63d02701807514151b703b476
         <input type="hidden" name="periodo" value="{{ periodo_sel }}">
 
         <div class="card shadow-sm border-0 mb-4" style="border-radius: 12px; overflow: hidden;">

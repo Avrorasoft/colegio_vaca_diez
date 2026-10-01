@@ -2,19 +2,13 @@
 """
 ==============================================================================
 Archivo: routes/profesores_portal.py
-<<<<<<< HEAD
 Proyecto: ASestud-Konetz - Sistema de Gestión Escolar
 Desarrollado por: Avrora Soft - Vibola LLC
-Descripción: Portal docente con distinción exacta entre Sueldos Íntegros Pagados
-             y Retenciones/Adelantos Parciales.
-=======
-Proyecto: Sistema de Gestión Escolar - Multi-Tenant / Genérico
-Desarrollado por: Avrora Soft - Vibola LLC
-Descripción: Portal docente con motor de precedencia de rúbricas:
-             1. Precedencia Específica: Criterios propios de la materia.
-             2. Precedencia General: Rúbrica general del nivel.
-             Soporte avanzado de múltiples respaldos documentales y galería.
->>>>>>> 869003bb7c96b3e63d02701807514151b703b476
+Descripción: Portal docente integral:
+             - Motor de precedencia de rúbricas (específica y general).
+             - Control financiero con distinción entre sueldos íntegros y adelantos.
+             - Gestión de tareas y seguimiento para la Pizarra Escolar.
+             - Módulo de asistencia y galería de respaldos documentales.
 ==============================================================================
 """
 
@@ -33,12 +27,15 @@ from werkzeug.utils import secure_filename
 # Modelos centralizados del sistema
 from models import (
     db, Profesor, Materia, Estudiante, Calificacion,
-<<<<<<< HEAD
-    CriterioEvaluacion, nivel_de_curso, Pago, PagoPersonal
-=======
-    CriterioEvaluacion, RespaldoEstudiante, nivel_de_curso
->>>>>>> 869003bb7c96b3e63d02701807514151b703b476
+    CriterioEvaluacion, nivel_de_curso, Pago, PagoPersonal,
+    Tarea, EntregaTarea
 )
+
+# Importación segura de RespaldoEstudiante si existe en models
+try:
+    from models import RespaldoEstudiante
+except ImportError:
+    RespaldoEstudiante = None
 
 # Importación segura de comunicados
 try:
@@ -94,14 +91,11 @@ def login_requerido(f):
 
 
 def obtener_criterios_materia(materia_id):
-<<<<<<< HEAD
-=======
     """
     Motor de precedencia de evaluación institucional:
     - Nivel 1: Criterios específicos asignados directamente a la materia.
     - Nivel 2: Criterios generales configurados para el nivel.
     """
->>>>>>> 869003bb7c96b3e63d02701807514151b703b476
     materia = Materia.query.get(materia_id)
     if not materia:
         return [], 'general', False, 'Primaria'
@@ -155,13 +149,10 @@ def obtener_criterios_materia(materia_id):
 
 
 def recalcular_nota_final(materia_id, periodo='1er Trimestre'):
-<<<<<<< HEAD
-=======
     """
     Calcula la sumatoria sobre 100 puntos y genera el desglose JSON.
     Se omite en régimen cualitativo.
     """
->>>>>>> 869003bb7c96b3e63d02701807514151b703b476
     criterios, origen, es_nidito, nivel = obtener_criterios_materia(materia_id)
     if es_nidito:
         return
@@ -724,9 +715,6 @@ def guardar_notas_matriz(materia_id):
     flash(f'✅ Calificaciones y respaldos guardados correctamente ({contador} estudiantes) para el {periodo}.', 'success')
     return redirect(url_for('profesores_portal.ver_materia', materia_id=materia_id, periodo=periodo))
 
-
-<<<<<<< HEAD
-=======
 @profesores_portal_bp.route('/ver_respaldo/<filename>')
 @login_requerido
 def ver_respaldo(filename):
@@ -755,13 +743,11 @@ def eliminar_respaldo(respaldo_id):
 
 
 # Bloqueo de mutación de rúbricas desde el portal docente
->>>>>>> 869003bb7c96b3e63d02701807514151b703b476
 @profesores_portal_bp.route('/nueva_evaluacion/<int:materia_id>', methods=['POST'])
 @login_requerido
 def nueva_evaluacion(materia_id):
     flash('❌ Acción restringida: La definición de rúbricas es de competencia exclusiva de la Administración.', 'warning')
     return redirect(url_for('profesores_portal.ver_materia', materia_id=materia_id))
-
 
 @profesores_portal_bp.route('/eliminar_evaluacion/<int:materia_id>', methods=['POST'])
 @login_requerido
