@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Registrar Pago - Colegio Vaca Díez{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">💰 Registrar Nuevo Pago</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('pagos.registrar_pago') }}" id="formPago">
+                        
+                        <div class="form-group mb-3">
+                            <label for="ci_estudiante">C.I. del Estudiante <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="ci_estudiante" name="ci_estudiante" 
+                                       placeholder="Ej: 1234567" required>
+                                <button class="btn btn-outline-secondary" type="button" id="btnBuscar">
+                                    🔍 Buscar
+                                </button>
+                            </div>
+                            <small class="text-muted">Ingresa la cédula del estudiante</small>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label>Estudiante</label>
+                            <input type="text" class="form-control" id="nombre_estudiante" 
+                                   placeholder="Nombre del estudiante" readonly>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label>RUDE</label>
+                            <input type="text" class="form-control" id="rude_estudiante" 
+                                   placeholder="RUDE del estudiante" readonly>
+                        </div>
+
+                        <hr>
+
+                        <div class="form-group mb-3">
+                            <label for="tipo_pago">Tipo de Pago <span class="text-danger">*</span></label>
+                            <select class="form-control" id="tipo_pago" name="tipo_pago" required>
+                                <option value="">Seleccione un tipo de pago</option>
+                                {% for value, label in tipos_pago %}
+                                <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="descripcion">Descripción (opcional)</label>
+                            <input type="text" class="form-control" id="descripcion" name="descripcion" 
+                                   placeholder="Ej: Pago de pensión mes de marzo, Inscripción 2026, etc.">
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="mes">Mes <span class="text-danger">*</span></label>
+                                    <select class="form-control" id="mes" name="mes" required>
+                                        <option value="">Seleccione mes</option>
+                                        {% for mes in meses %}
+                                        <option value="{{ mes }}" {% if mes == mes_actual %}selected{% endif %}>{{ mes }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="anio">Año <span class="text-danger">*</span></label>
+                                    <select class="form-control" id="anio" name="anio" required>
+                                        <option value="">Seleccione año</option>
+                                        {% for anio in anios %}
+                                        <option value="{{ anio }}" {% if anio == anio_actual %}selected{% endif %}>{{ anio }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="monto_pagado">Monto Pagado (Bs.) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="monto_pagado" name="monto_pagado" 
+                                   step="0.01" min="0.01" placeholder="0.00" required>
+                            <small class="text-muted">Ingresa el monto que se está pagando en este momento</small>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="metodo_pago">Método de Pago</label>
+                            <select class="form-control" id="metodo_pago" name="metodo_pago">
+                                <option value="Efectivo">💵 Efectivo</option>
+                                <option value="Bancario">🏦 Bancario</option>
+                            </select>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('index') }}" class="btn btn-secondary me-md-2">Cancelar</a>
+                            <button type="submit" class="btn btn-primary">💾 Registrar Pago</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ciInput = document.getElementById('ci_estudiante');
+    const btnBuscar = document.getElementById('btnBuscar');
+    const nombreInput = document.getElementById('nombre_estudiante');
+    const rudeInput = document.getElementById('rude_estudiante');
+    
+    function buscarEstudiante() {
+        const ci = ciInput.value.trim();
+        if (ci.length === 0) {
+            nombreInput.value = '';
+            rudeInput.value = '';
+            return;
+        }
+        
+        fetch(/pagos/api/buscar_estudiante?ci=)
+            .then(response => response.json())
+            .then(data => {
+                if (data.encontrado) {
+                    nombreInput.value = data.nombre_completo;
+                    rudeInput.value = data.rude || '';
+                    nombreInput.classList.remove('border-danger');
+                    nombreInput.classList.add('border-success');
+                } else {
+                    nombreInput.value = '⚠️ Estudiante no encontrado';
+                    rudeInput.value = '';
+                    nombreInput.classList.remove('border-success');
+                    nombreInput.classList.add('border-danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                nombreInput.value = '❌ Error al buscar';
+            });
+    }
+    
+    ciInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            buscarEstudiante();
+        }
+    });
+    
+    btnBuscar.addEventListener('click', buscarEstudiante);
+    ciInput.addEventListener('blur', buscarEstudiante);
+});
+</script>
+{% endblock %}
+{% endblock %}

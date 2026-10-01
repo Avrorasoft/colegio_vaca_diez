@@ -14,7 +14,8 @@
     <meta name="theme-color" content="#0f172a">
 
     <style>
-        body { background-color: #f1f5f9; font-family: Arial, Helvetica, sans-serif; }
+        /* FONDO BLANCO PURO COMO SOLICITASTE */
+        body { background-color: #ffffff; font-family: Arial, Helvetica, sans-serif; }
         .wrapper { display: flex; min-height: 100vh; }
         #sidebarPadres { min-width: 260px; max-width: 260px; background: #0f172a; color: #fff; transition: all .3s; display: flex; flex-direction: column; }
         #sidebarPadres.active { margin-left: -260px; }
@@ -29,12 +30,11 @@
         #sidebarPadres .nav-link i { width: 20px; text-align: center; font-size: 15px; }
         .sidebar-separator { height: 1px; background: rgba(255,255,255,.08); margin: 6px 15px; }
         .padre-badge { background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8; border-radius: 8px; padding: 6px 10px; margin: 10px 15px; font-size: 13px; font-weight: bold; text-align: center; }
-        .main-content { flex-grow: 1; display: flex; flex-direction: column; }
+        .main-content { flex-grow: 1; display: flex; flex-direction: column; background-color: #ffffff; }
         .topbar { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 12px 20px; }
-        .topbar .logo-mini { max-width: 40px; max-height: 40px; border-radius: 4px; }
         .content-area { padding: 20px; flex-grow: 1; }
         .footer { background: #fff; border-top: 1px solid #e2e8f0; padding: 10px 20px; font-size: 13px; color: #64748b; }
-        .card { box-shadow: 0 0.5rem 0.5rem rgba(0,0,0,.35) !important; border: 1px solid rgba(0,0,0,.12) !important; }
+        .card { box-shadow: 0 0.5rem 0.5rem rgba(0,0,0,.08) !important; border: 1px solid rgba(0,0,0,.12) !important; }
         #sidebarOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1040; }
         #sidebarOverlay.active { display: block; }
 
@@ -74,7 +74,7 @@
         <nav id="sidebarPadres">
             <div class="sidebar-brand">
                 {% if institucion and institucion.get('institucion_logo') %}
-                <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-img">
+                <img src="{{ institucion.institucion_logo_url }}" alt="Logo" class="logo-img">
                 {% endif %}
                 <h5>{{ institucion.get('institucion_linea1', 'Colegio') if institucion else 'Colegio' }}</h5>
                 {% if institucion and institucion.get('institucion_linea2') %}
@@ -101,21 +101,20 @@
                     <i class="bi bi-cash-stack"></i> Estado de Pagos
                 </a>
                 <div class="sidebar-separator"></div>
-                <a class="nav-link text-danger" href="{{ url_for('auth.logout') }}">
-                    <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
+                <a class="nav-link text-danger" href="{{ url_for('portal_padres.login') }}">
+                    <i class="bi bi-box-arrow-left"></i>
+                    Cerrar Sesión
                 </a>
             </div>
         </nav>
 
         <div class="main-content">
             <div class="topbar d-flex justify-content-between align-items-center">
+                <!-- LOGO GIGANTE ELIMINADO DE AQUÍ PARA EVITAR BLOQUEO DE PANTALLA -->
                 <div class="d-flex align-items-center gap-3">
                     <button class="btn btn-outline-secondary btn-sm" type="button" id="sidebarTogglePadres">
                         <i class="bi bi-list"></i>
                     </button>
-                    {% if institucion and institucion.get('institucion_logo') %}
-                    <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-mini">
-                    {% endif %}
                     <h5 class="mb-0">{% block page_title %}Portal de Padres{% endblock %}</h5>
                 </div>
                 <div class="text-muted d-none d-md-block">
@@ -178,10 +177,22 @@
     }
 })();
 </script>
+<script>
+    // SCRIPT DETECTIVE DE SALTOS DE SCROLL EN VIVO
+    window.addEventListener('scroll', function() {
+        // Si la página se desplaza bruscamente hacia arriba sin que el usuario haya usado la rueda o la barra
+        if (window.scrollY > 0) {
+            console.log("Detectado scroll en posición:", window.scrollY);
+        }
+    }, { passive: true });
 
+    // Interceptar cualquier clic para ver qué elemento causó el desplazamiento o la recarga
+    document.addEventListener('click', function(e) {
+        let target = e.target.closest('a, button');
+        if (target) {
+            console.log("Click detectado en elemento:", target, "con href/action:", target.getAttribute('href') || target.type);
+        }
+    }, true);
+</script>
 </body>
 </html>
-
-
-
-

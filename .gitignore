@@ -1,19 +1,28 @@
-.secret_key
-.credenciales_iniciales.txt
-*.db
-__pycache__/
-*.pyc
-.env
+# Entorno virtual de Python
 venv/
-static/uploads/
-static/recibos/
-static/boletines/
-logs/
-instance/*.db-shm
-instance/*.db-wal
+env/
+ENV/
 
-*.avr
-
-static/recibos_personal/*.pdf
-*.db
+# Archivos de caché de Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Base de datos local (SQLite)
+*.db
+*.sqlite3
+instance/
+
+# Archivos de sesión y variables de entorno
+.env
+.flaskenv
+
+# Logs y volcados de depuración
+*.log
+
+# Archivos de configuración de editores
+.vscode/
+.idea/
+cloudflared.exe
+

@@ -2,13 +2,13 @@
 """
 ==============================================================================
 Archivo: models.py
-Proyecto: ASestud-Konetz / Colegio Dr. Antonio Vaca Díez
+Proyecto: ASestud-Konetz / Sistema de Gestión Escolar Genérico
 Descripción:
     Modelos SQLAlchemy del sistema de gestión escolar.
     IDENTIFICADOR PRINCIPAL: CARNET DE IDENTIDAD (CI)
     El RUDE se mantiene solo como dato informativo.
     DIVISIÓN ACADÉMICA: Niveles (Nidito/Primaria/Secundaria) y Turnos
-    (Mañana/Tarde). La Caja es única para todo el colegio.
+    (Mañana/Tarde). La Caja es única para toda la institución.
     SISTEMA DE CALIFICACIONES: Paramétrico y dinámico (Cuantitativo para
     Primaria/Secundaria y Cualitativo/Descriptivo para Nidito).
     PORTAL FAMILIAR (PWA): Autenticación segura para tutores con C.I.
@@ -19,6 +19,7 @@ Descripción:
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
@@ -150,6 +151,13 @@ class Estudiante(db.Model):
         cascade="all, delete-orphan"
     )
 
+    respaldos = db.relationship(
+        'RespaldoEstudiante',
+        backref='estudiante',
+        lazy=True,
+        cascade="all, delete-orphan"
+    )
+
     def __repr__(self):
         return f"<Estudiante CI:{self.ci} - {self.apellidos}, {self.nombres}>"
 
@@ -261,6 +269,13 @@ class Materia(db.Model):
         backref=db.backref('materias')
     )
 
+    respaldos = db.relationship(
+        'RespaldoEstudiante',
+        backref='materia',
+        lazy=True,
+        cascade="all, delete-orphan"
+    )
+
     def __repr__(self):
         return f"<Materia {self.nombre} - {self.curso_id}>"
 
@@ -279,9 +294,9 @@ class CriterioEvaluacion(db.Model):
     tipo_evaluacion = db.Column(db.String(20), default='NUMERICA')   # 'NUMERICA' o 'CUALITATIVA'
 
     # Parámetros Cuantitativos (Primaria / Secundaria)
-    puntaje_maximo = db.Column(db.Integer, default=0)               # Asistencia: 10, Participación: 20, etc.
-    permite_decimales = db.Column(db.Boolean, default=False)        # False para Asistencia y Participación
-    paso_step = db.Column(db.Float, default=1.0)                    # 1.0 (enteros) o 0.1/0.5 (decimales)
+    puntaje_maximo = db.Column(db.Integer, default=0)                # Asistencia: 10, Participación: 20, etc.
+    permite_decimales = db.Column(db.Boolean, default=False)         # False para Asistencia y Participación
+    paso_step = db.Column(db.Float, default=1.0)                     # 1.0 (enteros) o 0.1/0.5 (decimales)
 
     # Parámetros Cualitativos (Nidito / Nivel Inicial)
     opciones_cualitativas = db.Column(db.String(255), nullable=True)
@@ -332,6 +347,25 @@ class Calificacion(db.Model):
 
     def __repr__(self):
         return f"<Calificacion CI:{self.ci_estudiante} - {self.periodo}: {self.nota or self.valoracion_cualitativa}>"
+
+
+# ==============================================================================
+# RESPALDO ESTUDIANTE (GALERÍA DE MÚLTIPLES ARCHIVOS DOCUMENTALES Y FOTOGRÁFICOS)
+# ==============================================================================
+
+class RespaldoEstudiante(db.Model):
+    __tablename__ = 'respaldo_estudiante'
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    estudiante_id = db.Column(db.Integer, db.ForeignKey('estudiantes.id'), nullable=False)
+    materia_id = db.Column(db.Integer, db.ForeignKey('materias.id'), nullable=False)
+    periodo = db.Column(db.String(50), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    fecha_subida = db.Column(db.DateTime, default=ahora_bolivia)
+
+    def __repr__(self):
+        return f"<RespaldoEstudiante EstID:{self.estudiante_id} - {self.filename}>"
 
 
 # ==============================================================================
@@ -448,10 +482,6 @@ class Falta(db.Model):
         return f"<Falta {self.tipo_sujeto} CI:{self.ci_sujeto}>"
 
 
-# ==============================================================================
-# GASTO
-# ==============================================================================
-
 class Gasto(db.Model):
     __tablename__ = 'gastos'
 
@@ -464,6 +494,9 @@ class Gasto(db.Model):
     proveedor = db.Column(db.String(100), nullable=True)
     responsable = db.Column(db.String(100), nullable=True)
     metodo_pago = db.Column(db.String(20), default='Efectivo')
+    
+    # Columna para almacenar el archivo adjunto (imágenes, PDFs, Word y Excel)
+    archivo = db.Column(db.String(255), nullable=True)
 
     def __repr__(self):
         return f"<Gasto {self.categoria}>"
@@ -485,7 +518,7 @@ class Mensaje(db.Model):
     contenido = db.Column(db.Text, nullable=True)
 
     fecha_envio = db.Column(db.DateTime, default=ahora_bolivia)
-    remitente = db.Column(db.String(20), default='Colegio')
+    remitente = db.Column(db.String(20), default='Institución')
     leido = db.Column(db.Boolean, default=False)
 
     def __repr__(self):
@@ -693,6 +726,15 @@ class ConfiguracionSuperadmin(db.Model):
     descripcion = db.Column(db.String(255), nullable=True)
 
 
+class ConfiguracionInstitucion(db.Model):
+    __tablename__ = 'configuracion_institucion'
+    id = db.Column(db.Integer, primary_key=True)
+    institucion_linea1 = db.Column(db.String(150), default='Sistema de Gestión Escolar')
+    institucion_linea2 = db.Column(db.String(150), default='')
+    institucion_linea3 = db.Column(db.String(150), default='')
+    institucion_logo = db.Column(db.String(255), default='uploads/logo_institucion.png')
+
+
 # ==============================================================================
 # INTERCEPTORES DE EVENTOS PARA EVITAR REGISTROS HUÉRFANOS
 # ==============================================================================
@@ -753,8 +795,7 @@ def interceptar_eliminacion_personal(mapper, connection, target):
             (PagoPersonal.__table__.c.persona_id == target.id)
         )
     )
-from sqlalchemy import event
-from sqlalchemy.engine import Engine
+
 
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
@@ -763,10 +804,3 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA synchronous = NORMAL;")
     cursor.execute("PRAGMA busy_timeout = 5000;")
     cursor.close()
-class ConfiguracionInstitucion(db.Model):
-    __tablename__ = 'configuracion_institucion'
-    id = db.Column(db.Integer, primary_key=True)
-    institucion_linea1 = db.Column(db.String(150), default='Sistema de Gestión Escolar')
-    institucion_linea2 = db.Column(db.String(150), default='')
-    institucion_linea3 = db.Column(db.String(150), default='')
-    institucion_logo = db.Column(db.String(255), default='uploads/logo_institucion.png')

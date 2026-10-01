@@ -172,11 +172,12 @@
             <div class="card-body">
                 <div class="row align-items-center">
                     <div class="col-md-4 text-center">
-                        {% if logo_url %}
-                            <img src="{{ logo_url }}" 
+                        {% if configs.institucion_logo %}
+                            <!-- Ruta directa y blindada al backend (esquivando PWA) -->
+                            <img src="{{ url_for('superadmin.ver_logo_institucion') }}?v={{ range(1, 999999) | random }}" 
                                  alt="Logo Institucional" 
-                                 class="img-thumbnail" 
-                                 style="max-width: 200px; max-height: 200px;"
+                                 class="img-thumbnail bg-light" 
+                                 style="max-width: 200px; max-height: 200px; object-fit: contain;"
                                  id="preview_logo">
                         {% else %}
                             <div class="border rounded p-4 text-muted" id="preview_logo_placeholder">
@@ -193,12 +194,11 @@
                                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
                                onchange="previewLogo(this)">
                         <small class="text-muted">
-                            Formatos permitidos: PNG, JPG, JPEG, GIF, WEBP. Tamaño máximo: 5MB.
-                            El logo se mostrará en todos los PDFs oficiales (recibos, boletines, reportes).
+                            Formatos permitidos: PNG, JPG, JPEG, GIF, WEBP.
                         </small>
                         {% if configs.institucion_logo %}
                             <div class="mt-2 small text-info">
-                                <i class="bi bi-info-circle"></i> Logo actual: <code>{{ configs.institucion_logo }}</code>
+                                <i class="bi bi-info-circle"></i> Archivo activo: <code>{{ configs.institucion_logo }}</code>
                             </div>
                         {% endif %}
                     </div>

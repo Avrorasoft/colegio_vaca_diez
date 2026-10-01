@@ -372,26 +372,38 @@ def reporte_deudores():
             continue
 
         pagos_est = Pago.query.filter_by(estudiante_id=est.id, anio=anio_actual).all()
-        pagos_map = {p.mes.strip().capitalize(): p for p in pagos_est if p.mes}
+        
+        # Diccionario acumulativo por mes para sumar todas las fracciones y abonos
+        pagos_por_mes = defaultdict(lambda: {"monto_pagado": 0.0, "monto_total": pension_base})
+        
+        for p in pagos_est:
+            if p.mes:
+                # Normalizamos el nombre del mes (ej. "abril", "ABRIL ", "Abril" -> "Abril")
+                mes_norm = p.mes.strip().capitalize()
+                pagos_por_mes[mes_norm]["monto_pagado"] += float(p.monto_pagado or 0.0)
+                if p.monto_total:
+                    pagos_por_mes[mes_norm]["monto_total"] = float(p.monto_total)
 
         meses_adeudados = []
         deuda_estudiante = 0.0
 
         for mes in meses_escolares:
-            if mes in pagos_map:
-                p = pagos_map[mes]
-                saldo_mes = float(p.monto_total or pension_base) - float(p.monto_pagado or 0.0)
-                if saldo_mes > 0:
-                    deuda_estudiante += saldo_mes
-                    meses_adeudados.append(f"{mes[:3]} (Bs.{saldo_mes:,.0f})")
-            else:
-                deuda_estudiante += pension_base
-                meses_adeudados.append(mes[:3])
+            info_mes = pagos_por_mes.get(mes, {"monto_pagado": 0.0, "monto_total": pension_base})
+            monto_total_esperado = info_mes["monto_total"]
+            monto_pagado_total = info_mes["monto_pagado"]
+            
+            saldo_mes = monto_total_esperado - monto_pagado_total
+            
+            # Si el saldo es mayor a cero (permitiendo un margen de holgura por centavos), cuenta como deuda
+            if saldo_mes > 0.5:
+                deuda_estudiante += saldo_mes
+                meses_adeudados.append(f"{mes[:3]} (Bs.{saldo_mes:,.0f})")
 
         if deuda_estudiante > 0:
             curso_nom = est.curso or "Sin Curso Asignado"
             deudores_por_curso[curso_nom]["subtotal"] += deuda_estudiante
             deudores_por_curso[curso_nom]["alumnos"].append({
+                "id": est.id,
                 "estudiante": f"{est.apellidos}, {est.nombres}",
                 "ci": est.ci or "S/N",
                 "pension": pension_base,

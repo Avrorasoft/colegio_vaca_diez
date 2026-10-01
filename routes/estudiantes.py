@@ -1,14 +1,12 @@
-from decorators import profesor_autorizado_requerido
 # -*- coding: utf-8 -*-
 """
 ==============================================================================
 Archivo: routes/estudiantes.py
-Proyecto: Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez
+Proyecto: Sistema de Gestión Escolar
 Desarrollado por: Avrora Soft - Vibola LLC
 Descripción: Blueprint para gestión completa de Estudiantes, Pagos, Boletines
        y Recibos. IDENTIFICADOR PRINCIPAL: C.I. (RUDE solo informativo).
-       DIVISIÓN ACADÉMICA: Niveles (Nidito/Primaria/Secundaria) y
-       Turnos (Mañana/Tarde). Caja única para todo el colegio.
+       DIVISIÓN ACADÉMICA: Niveles y Turnos.
 ==============================================================================
 """
 import datetime
@@ -18,12 +16,13 @@ from PIL import Image
 import os
 import io
 from sqlalchemy.orm import joinedload, aliased
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, session, jsonify
 from models import (
-  db, Estudiante, Padre, Pago, Calificacion, Materia, Egresado,
-  HistorialCalificacion, Mensaje,
-  CURSOS_POR_NIVEL, NIVELES, TURNOS, nivel_de_curso
+    db, Estudiante, Padre, Pago, Calificacion, Materia, Egresado,
+    HistorialCalificacion, Mensaje, ConfiguracionSuperadmin,
+    CURSOS_POR_NIVEL, NIVELES, TURNOS, nivel_de_curso
 )
+from decorators import profesor_autorizado_requerido
 
 estudiantes_bp = Blueprint('estudiantes', __name__)
 
@@ -199,120 +198,131 @@ def eliminar_estudiante(id):
 
 
 # ==============================================================================
-# CARDEX DEL ESTUDIANTE (BÚSQUEDA BLINDADA ID + C.I.)
+# CARDEX DEL ESTUDIANTE (BÚSQUEDA BLINDADA ID + C.I. Y PAGOS CRONOLÓGICOS)
 # ==============================================================================
 
 @estudiantes_bp.route('/ver/<int:id>')
 def ver_estudiante(id):
-  est = Estudiante.query.get_or_404(id)
-  padre = Padre.query.filter_by(estudiante_id=id).first()
-  pagos = Pago.query.filter_by(estudiante_id=id).order_by(Pago.fecha_pago.desc()).all()
+    est = Estudiante.query.get_or_404(id)
+    padre = Padre.query.filter_by(estudiante_id=id).first()
+    
+    # ⭐ Extracción de pagos y ordenamiento cronológico por mes lógico
+    pagos = Pago.query.filter_by(estudiante_id=id).all()
+    meses_orden = {
+        'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6,
+        'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
+    }
+    pagos.sort(key=lambda p: (
+        p.anio or 0, 
+        meses_orden.get(str(p.mes).strip().lower(), 99) if p.mes else 99, 
+        p.fecha_pago.timestamp() if p.fecha_pago else 0
+    ))
 
-  # ⭐ Búsqueda dual robusta por ID y por C.I.
-  calificaciones_raw = Calificacion.query.filter(Calificacion.estudiante_id == id).options(joinedload(Calificacion.materia)).all()
+    # ⭐ Búsqueda dual robusta por ID y por C.I.
+    calificaciones_raw = Calificacion.query.filter(Calificacion.estudiante_id == id).options(joinedload(Calificacion.materia)).all()
 
-  materias_dict = {}
+    materias_dict = {}
 
-  for c in calificaciones_raw:
-    m_nombre = c.materia.nombre if c.materia else 'Materia Eliminada'
+    for c in calificaciones_raw:
+        m_nombre = c.materia.nombre if c.materia else 'Materia Eliminada'
 
-    if m_nombre not in materias_dict:
-      materias_dict[m_nombre] = []
+        if m_nombre not in materias_dict:
+            materias_dict[m_nombre] = []
 
-    tipo_str = c.tipo or 'Evaluación'
+        tipo_str = c.tipo or 'Evaluación'
 
-    materias_dict[m_nombre].append({
-      'id': c.id,
-      'tipo': tipo_str,
-      'nota': float(c.nota) if c.nota is not None and c.nota > 0 else '-',
-      'periodo': c.periodo or '1er Trimestre',
-      'valoracion_cualitativa': c.valoracion_cualitativa or '',
-      'informe_descriptivo': c.informe_descriptivo or ''
-    })
-
-  materias_notas = []
-
-  for nombre, notas in materias_dict.items():
-    tiene_promedio_o_final = any(
-      'FINAL' in n['tipo'].upper() or 'PROMEDIO' in n['tipo'].upper()
-      for n in notas
-    )
-
-    if not tiene_promedio_o_final and notas:
-      parciales = []
-      nota_final_examen = None
-
-      for n in notas:
-        if isinstance(n['nota'], (int, float)):
-          texto_tipo = str(n['tipo']).lower().strip()
-
-          es_parcial = (
-            'parcial' in texto_tipo or
-            'primer' in texto_tipo or
-            'segundo' in texto_tipo or
-            'tercer' in texto_tipo or
-            '1er' in texto_tipo or
-            '2do' in texto_tipo or
-            '3er' in texto_tipo or
-            'trimestre' in texto_tipo or
-            'bimestre' in texto_tipo or
-            texto_tipo in ['1', '2', '3']
-          )
-
-          es_final = (
-            'final' in texto_tipo or
-            'nota final' in texto_tipo or
-            'anual' in texto_tipo or
-            texto_tipo in ['4', '5']
-          )
-
-          if not es_parcial and not es_final:
-            parciales.append(n['nota'])
-          elif es_parcial:
-            parciales.append(n['nota'])
-          elif es_final:
-            nota_final_examen = n['nota']
-
-      promedio_parciales = sum(parciales) / len(parciales) if parciales else 0.0
-
-      if nota_final_examen is not None:
-        promedio_definitivo = (promedio_parciales + nota_final_examen) / 2
-      else:
-        promedio_definitivo = promedio_parciales
-
-      if parciales or nota_final_examen is not None:
-        notas.append({
-          'id': None,
-          'tipo': 'PROMEDIO',
-          'nota': round(promedio_definitivo, 2)
+        materias_dict[m_nombre].append({
+            'id': c.id,
+            'tipo': tipo_str,
+            'nota': float(c.nota) if c.nota is not None and c.nota > 0 else '-',
+            'periodo': c.periodo or '1er Trimestre',
+            'valoracion_cualitativa': c.valoracion_cualitativa or '',
+            'informe_descriptivo': c.informe_descriptivo or ''
         })
 
-    import re as _re
-    def _clave(n):
-      t = str(n.get('tipo', '')).strip().upper()
-      if t in ('NOTA FINAL', 'PROMEDIO'):
-        return (3, 999999, 999999)
-      if t == 'EXAMEN FINAL':
-        return (2, 999999, 999999)
-      nums = _re.findall(r'\d+', t)
-      numero = int(nums[0]) if nums else 999998
-      if 'PARCIAL' in t:
-        return (1, numero, n.get('id') or 999999)
-      return (0, numero, n.get('id') or 999999)
-    notas.sort(key=_clave)
+    materias_notas = []
 
-    materias_notas.append({
-      'nombre': nombre,
-      'notas': notas
-    })
+    for nombre, notas in materias_dict.items():
+        tiene_promedio_o_final = any(
+            'FINAL' in n['tipo'].upper() or 'PROMEDIO' in n['tipo'].upper()
+            for n in notas
+        )
 
-  return render_template(
-    'estudiantes/ver.html',
-    est=est,
-    padre=padre,
-    pagos=pagos,
-    materias_notas=materias_notas
-  )
+        if not tiene_promedio_o_final and notas:
+            parciales = []
+            nota_final_examen = None
+
+            for n in notas:
+                if isinstance(n['nota'], (int, float)):
+                    texto_tipo = str(n['tipo']).lower().strip()
+
+                    es_parcial = (
+                        'parcial' in texto_tipo or
+                        'primer' in texto_tipo or
+                        'segundo' in texto_tipo or
+                        'tercer' in texto_tipo or
+                        '1er' in texto_tipo or
+                        '2do' in texto_tipo or
+                        '3er' in texto_tipo or
+                        'trimestre' in texto_tipo or
+                        'bimestre' in texto_tipo or
+                        texto_tipo in ['1', '2', '3']
+                    )
+
+                    es_final = (
+                        'final' in texto_tipo or
+                        'nota final' in texto_tipo or
+                        'anual' in texto_tipo or
+                        texto_tipo in ['4', '5']
+                    )
+
+                    if not es_parcial and not es_final:
+                        parciales.append(n['nota'])
+                    elif es_parcial:
+                        parciales.append(n['nota'])
+                    elif es_final:
+                        nota_final_examen = n['nota']
+
+            promedio_parciales = sum(parciales) / len(parciales) if parciales else 0.0
+
+            if nota_final_examen is not None:
+                promedio_definitivo = (promedio_parciales + nota_final_examen) / 2
+            else:
+                promedio_definitivo = promedio_parciales
+
+            if parciales or nota_final_examen is not None:
+                notas.append({
+                    'id': None,
+                    'tipo': 'PROMEDIO',
+                    'nota': round(promedio_definitivo, 2)
+                })
+
+        import re as _re
+        def _clave(n):
+            t = str(n.get('tipo', '')).strip().upper()
+            if t in ('NOTA FINAL', 'PROMEDIO'):
+                return (3, 999999, 999999)
+            if t == 'EXAMEN FINAL':
+                return (2, 999999, 999999)
+            nums = _re.findall(r'\d+', t)
+            numero = int(nums[0]) if nums else 999998
+            if 'PARCIAL' in t:
+                return (1, numero, n.get('id') or 999999)
+            return (0, numero, n.get('id') or 999999)
+        notas.sort(key=_clave)
+
+        materias_notas.append({
+            'nombre': nombre,
+            'notas': notas
+        })
+
+    return render_template(
+        'estudiantes/ver.html',
+        est=est,
+        padre=padre,
+        pagos=pagos,
+        materias_notas=materias_notas
+    )
 
 
 # ==============================================================================
@@ -337,57 +347,57 @@ def cambiar_turno(id):
 
 
 # ==============================================================================
-# SUBIDA DE FOTO DEL ESTUDIANTE (NOMBRE DE ARCHIVO = C.I.)
+# SUBIDA DE FOTO DEL ESTUDIANTE (NOMBRE DE ARCHIVO = C.I. - RESPUESTA JSON)
 # ==============================================================================
 
 @estudiantes_bp.route('/subir_foto/<int:id>', methods=['POST'])
 def subir_foto(id):
-  est = Estudiante.query.get_or_404(id)
+    est = Estudiante.query.get_or_404(id)
 
-  if 'foto' not in request.files:
-    flash('No se seleccionó ningún archivo', 'danger')
-    return redirect(url_for('estudiantes.ver_estudiante', id=id))
+    if 'foto' not in request.files:
+        return jsonify({'success': False, 'message': 'No se seleccionó ningún archivo'}), 400
 
-  file = request.files['foto']
+    file = request.files['foto']
 
-  if file.filename == '':
-    flash('No se seleccionó ningún archivo', 'danger')
-    return redirect(url_for('estudiantes.ver_estudiante', id=id))
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No se seleccionó ningún archivo'}), 400
 
-  if file and allowed_file(file.filename):
-    try:
-      filename = secure_filename(file.filename)
-      extension = filename.rsplit('.', 1)[1].lower()
+    if file and allowed_file(file.filename):
+        try:
+            filename = secure_filename(file.filename)
+            extension = filename.rsplit('.', 1)[1].lower()
 
-      # Usar C.I. para el nombre del archivo
-      nuevo_nombre = f"{est.ci}.{extension}"
+            # Usar C.I. para el nombre del archivo
+            nuevo_nombre = f"{est.ci}.{extension}"
 
-      upload_folder = os.path.join(current_app.root_path, 'static', 'uploads', 'estudiantes')
-      os.makedirs(upload_folder, exist_ok=True)
+            upload_folder = os.path.join(current_app.root_path, 'static', 'uploads', 'estudiantes')
+            os.makedirs(upload_folder, exist_ok=True)
 
-      filepath = os.path.join(upload_folder, nuevo_nombre)
+            filepath = os.path.join(upload_folder, nuevo_nombre)
 
-      # Procesar imagen con Pillow de forma segura
-      with Image.open(file.stream) as img:
-        if img.mode in ("RGBA", "P") and extension in ("jpg", "jpeg"):
-          img = img.convert("RGB")
+            # Procesar imagen con Pillow de forma segura
+            with Image.open(file.stream) as img:
+                if img.mode in ("RGBA", "P") and extension in ("jpg", "jpeg"):
+                    img = img.convert("RGB")
 
-        max_size = (800, 800)
-        img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        img.save(filepath, optimize=True, quality=80)
+                max_size = (800, 800)
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                img.save(filepath, optimize=True, quality=80)
 
-      est.foto_path = f"uploads/estudiantes/{nuevo_nombre}"
-      db.session.commit()
+            est.foto_path = f"uploads/estudiantes/{nuevo_nombre}"
+            db.session.add(est)
+            db.session.commit()
 
-      flash('✅ Foto optimizada y actualizada exitosamente', 'success')
+            # Retornar JSON con la URL exacta y un parámetro de tiempo para evitar caché del navegador
+            url_imagen = url_for('static', filename=est.foto_path) + f"?v={int(datetime.now().timestamp())}"
+            return jsonify({'success': True, 'nueva_url': url_imagen})
 
-    except Exception as e:
-      print(f"ERROR CRÍTICO AL SUBIR FOTO: {str(e)}")
-      flash(f'❌ Error al procesar la imagen: {str(e)}', 'danger')
-  else:
-    flash('❌ Formato no permitido (Verifica que sea JPG, PNG o JPEG)', 'danger')
-
-  return redirect(url_for('estudiantes.ver_estudiante', id=id))
+        except Exception as e:
+            db.session.rollback()
+            print(f"ERROR CRÍTICO AL SUBIR FOTO: {str(e)}")
+            return jsonify({'success': False, 'message': f'Error al procesar la imagen: {str(e)}'}), 500
+    else:
+        return jsonify({'success': False, 'message': 'Formato no permitido (Verifica que sea JPG, PNG o JPEG)'}), 400
 
 
 # ==============================================================================
@@ -504,7 +514,7 @@ def archivar_como_egresado(id):
 
 
 # ==============================================================================
-# REGISTRAR PAGO DE PENSIÓN (CON C.I. Y MÉTODO DE PAGO)
+# REGISTRAR PAGO DE PENSIÓN (SOPORTA MÚLTIPLES MESES Y OTROS CONCEPTOS)
 # ==============================================================================
 
 @estudiantes_bp.route('/pagar/<int:id>', methods=['GET', 'POST'])
@@ -530,6 +540,9 @@ def pagar_estudiante(id):
 
     if request.method == 'POST':
         accion_cobro = request.form.get('accion_cobro', 'pension')
+        
+        # ⭐ LA LÓGICA DEL TURNO SE MANTIENE INTACTA PARA NO ROMPER REPORTES
+        responsable_turno = (session.get('turno_activo') or session.get('turno') or 'Caja Central')
 
         # ⭐ COBRO DE OTROS CONCEPTOS (Inscripción, Poleras, Snack, Actividades)
         if accion_cobro == 'otro_concepto':
@@ -545,8 +558,6 @@ def pagar_estudiante(id):
             except ValueError:
                 flash('❌ Ingrese un monto válido.', 'danger')
                 return redirect(url_for('estudiantes.pagar_estudiante', id=id))
-
-            responsable_turno = (session.get('turno_activo') or session.get('turno') or 'Caja Central')
 
             try:
                 nuevo_pago = Pago(
@@ -574,8 +585,16 @@ def pagar_estudiante(id):
                 flash(f'❌ Error al registrar el cobro: {str(e)}', 'danger')
                 return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-        # ⭐ COBRO DE PENSIÓN MENSUAL Y ABONOS PARCIALES
-        mes_a_pagar = request.form.get('mes_a_pagar', '').strip()
+        # ⭐ COBRO MÚLTIPLE DE PENSIONES
+        meses_seleccionados = request.form.getlist('meses_seleccionados')
+        if not meses_seleccionados:
+            mes_unico = request.form.get('mes_a_pagar', '').strip()
+            if mes_unico:
+                meses_seleccionados = [mes_unico]
+            else:
+                flash('❌ No seleccionó ningún mes para pagar.', 'danger')
+                return redirect(url_for('estudiantes.pagar_estudiante', id=id))
+
         monto_abono_str = request.form.get('monto_abono', '0').strip()
         descuento_str = request.form.get('descuento', '0').strip()
         metodo_pago = request.form.get('metodo_pago', 'Efectivo').strip()
@@ -583,53 +602,90 @@ def pagar_estudiante(id):
             metodo_pago = 'Efectivo'
 
         try:
-            monto_abono = float(monto_abono_str)
-            descuento = float(descuento_str) if descuento_str else 0.0
+            monto_abono_total = float(monto_abono_str)
+            descuento_total = float(descuento_str) if descuento_str else 0.0
         except ValueError:
             flash('❌ Ingrese montos válidos.', 'danger')
             return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-        pagos_previos = Pago.query.filter_by(
-            estudiante_id=id, anio=anio_actual, mes=mes_a_pagar, tipo_concepto='Pensión'
-        ).all()
+        # Calcular deuda total de los meses seleccionados
+        deuda_total_seleccionada = 0.0
+        saldos_por_mes = {}
 
-        abonado_previo = sum(float(p.monto_pagado or 0.0) for p in pagos_previos)
-        descuento_previo = sum(float(p.descuento or 0.0) for p in pagos_previos)
-        nuevo_descuento_total = descuento_previo + descuento
-        costo_neto = max(0.0, monto_mensual - nuevo_descuento_total)
-        saldo_restante_previo = max(0.0, costo_neto - abonado_previo)
+        for mes_nombre in meses_seleccionados:
+            pagos_previos = Pago.query.filter_by(
+                estudiante_id=id, anio=anio_actual, mes=mes_nombre, tipo_concepto='Pensión'
+            ).all()
+            
+            abonado_previo = sum(float(p.monto_pagado or 0.0) for p in pagos_previos)
+            desc_previo = sum(float(p.descuento or 0.0) for p in pagos_previos)
+            
+            costo_neto_mes = max(0.0, monto_mensual - desc_previo)
+            saldo_mes = max(0.0, costo_neto_mes - abonado_previo)
+            
+            saldos_por_mes[mes_nombre] = {
+                'pagos_previos': pagos_previos,
+                'saldo': saldo_mes,
+                'costo': monto_mensual
+            }
+            deuda_total_seleccionada += saldo_mes
 
-        if monto_abono > (saldo_restante_previo + 0.01):
-            flash(f'⚠️ El monto (Bs. {monto_abono:.2f}) excede el saldo pendiente (Bs. {saldo_restante_previo:.2f}).', 'warning')
+        if monto_abono_total > (deuda_total_seleccionada + 0.05):
+            flash(f'⚠️ El abono (Bs. {monto_abono_total:.2f}) excede la deuda de los meses seleccionados (Bs. {deuda_total_seleccionada:.2f}).', 'warning')
             return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
-        nuevo_total_abonado = abonado_previo + monto_abono
-        nuevo_saldo_final = max(0.0, costo_neto - nuevo_total_abonado)
-        estado_pago = 'Pagado' if nuevo_saldo_final <= 0.01 else 'Abono'
-
-        responsable_turno = (session.get('turno_activo') or session.get('turno') or 'Caja Central')
+        monto_restante = monto_abono_total
+        descuento_restante = descuento_total
+        nuevos_pagos_creados = []
+        fecha_transaccion = datetime.now()
 
         try:
-            pago_deposito = Pago(
-                estudiante_id=id, ci_estudiante=est.ci, rude_estudiante=est.rude,
-                mes=mes_a_pagar, anio=anio_actual, monto_total=monto_mensual,
-                descuento=descuento, monto_pagado=monto_abono, fecha_pago=datetime.now(),
-                estado=estado_pago, metodo_pago=metodo_pago, turno_responsable=responsable_turno,
-                tipo_concepto='Pensión', detalle_concepto=f'Pensión {mes_a_pagar}'
-            )
-            db.session.add(pago_deposito)
+            for mes_nombre in meses_seleccionados:
+                if monto_restante <= 0 and descuento_restante <= 0:
+                    break
 
-            if estado_pago == 'Pagado':
-                for p in pagos_previos:
-                    p.estado = 'Pagado'
+                info = saldos_por_mes[mes_nombre]
+                saldo_actual = info['saldo']
+                if saldo_actual <= 0:
+                    continue
+
+                abono_este_mes = min(saldo_actual, monto_restante)
+                monto_restante -= abono_este_mes
+
+                desc_este_mes = min(saldo_actual - abono_este_mes, descuento_restante) if descuento_restante > 0 else 0.0
+                descuento_restante -= desc_este_mes
+
+                nuevo_saldo_mes = max(0.0, saldo_actual - abono_este_mes - desc_este_mes)
+                estado_mes = 'Pagado' if nuevo_saldo_mes <= 0.01 else 'Abono'
+
+                pago_deposito = Pago(
+                    estudiante_id=id, ci_estudiante=est.ci, rude_estudiante=est.rude,
+                    mes=mes_nombre, anio=anio_actual, monto_total=info['costo'],
+                    descuento=desc_este_mes, monto_pagado=abono_este_mes, fecha_pago=fecha_transaccion,
+                    estado=estado_mes, metodo_pago=metodo_pago, turno_responsable=responsable_turno,
+                    tipo_concepto='Pensión', detalle_concepto=f'Pensión {mes_nombre}'
+                )
+                db.session.add(pago_deposito)
+                nuevos_pagos_creados.append(pago_deposito)
+
+                if estado_mes == 'Pagado':
+                    for p in info['pagos_previos']:
+                        p.estado = 'Pagado'
 
             db.session.commit()
-            flash(f'✅ Depósito de Bs. {monto_abono:.2f} registrado para {mes_a_pagar}.', 'success')
-            return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=pago_deposito.id))
+            
+            meses_str = ", ".join(meses_seleccionados)
+            flash(f'✅ ¡Cobro Múltiple Exitoso! Meses: {meses_str} | Total: Bs. {monto_abono_total:.2f}', 'success')
+            
+            # Redirigir al recibo del primer pago creado
+            if nuevos_pagos_creados:
+                return redirect(url_for('estudiantes.imprimir_recibo_individual', pago_id=nuevos_pagos_creados[0].id))
+            return redirect(url_for('estudiantes.ver_estudiante', id=id))
+
         except Exception as e:
             db.session.rollback()
-            flash(f'❌ Error: {str(e)}', 'danger')
-            return redirect(url_for('estudiantes.ver_estudiante', id=id))
+            flash(f'❌ Error al procesar el pago múltiple: {str(e)}', 'danger')
+            return redirect(url_for('estudiantes.pagar_estudiante', id=id))
 
     # ⭐ CÁLCULO DE SALDOS PARA LA VISTA (PETICIÓN GET)
     estado_meses = []
@@ -1383,46 +1439,115 @@ def crear_curso():
 
 
 # ==============================================================================
+# FUNCIÓN INTERNA PARA OBTENER DATOS DE MEMBRETE (NEUTRA Y DINÁMICA)
+# ==============================================================================
+def obtener_datos_membrete_pdf():
+    """
+    Obtiene los datos institucionales de forma completamente neutra y limpia 
+    desde ConfiguracionSuperadmin para los motores de recibos y PDF.
+    """
+    datos = {
+        'linea1': '',
+        'linea2': '',
+        'linea3': '',
+        'direccion': '',
+        'telefono': '',
+        'email': '',
+        'ciudad': '',
+        'gestion': '',
+        'logo_path': None
+    }
+    
+    try:
+        configs = ConfiguracionSuperadmin.query.filter(
+            ConfiguracionSuperadmin.clave.like('institucion_%')
+        ).all()
+        
+        for c in configs:
+            clave_limpia = c.clave.replace('institucion_', '')
+            if clave_limpia == 'linea1':
+                datos['linea1'] = c.valor or ''
+            elif clave_limpia == 'linea2':
+                datos['linea2'] = c.valor or ''
+            elif clave_limpia == 'linea3':
+                datos['linea3'] = c.valor or ''
+            elif clave_limpia == 'direccion':
+                datos['direccion'] = c.valor or ''
+            elif clave_limpia == 'telefono':
+                datos['telefono'] = c.valor or ''
+            elif clave_limpia == 'email':
+                datos['email'] = c.valor or ''
+            elif clave_limpia == 'ciudad':
+                datos['ciudad'] = c.valor or ''
+            elif clave_limpia == 'gestion':
+                datos['gestion'] = c.valor or ''
+            elif clave_limpia == 'logo' and c.valor:
+                base_dir = current_app.root_path
+                ruta_logo = os.path.join(base_dir, 'static', 'uploads', c.valor)
+                if os.path.exists(ruta_logo):
+                    datos['logo_path'] = ruta_logo
+                    
+    except Exception as e:
+        print(f"[ AVISO MEMBRETE PDF ]: No se pudieron cargar los datos institucionales ({e})")
+        
+    return datos
+
+
+# ==============================================================================
 # IMPRESIÓN DE PAGOS: INDIVIDUAL Y TOTAL ACUMULADO
 # ==============================================================================
 
 @estudiantes_bp.route('/recibo_pago_individual/<int:pago_id>')
 def imprimir_recibo_individual(pago_id):
-  """Genera la vista de impresión para un pago estrictamente individual."""
-  pago = Pago.query.get_or_404(pago_id)
-  est = Estudiante.query.get_or_404(pago.estudiante_id)
-  padre = Padre.query.filter_by(estudiante_id=est.id).first()
-  return render_template(
-    'estudiantes/recibo_pago_individual.html',
-    pago=pago,
-    est=est,
-    padre=padre
-  )
+    """Genera la vista de impresión agrupando los pagos de la misma transacción."""
+    pago_base = Pago.query.get_or_404(pago_id)
+    
+    pagos_transaccion = Pago.query.filter_by(
+        estudiante_id=pago_base.estudiante_id, 
+        fecha_pago=pago_base.fecha_pago
+    ).all()
+    
+    total_general = sum(float(p.monto_pagado or 0.0) for p in pagos_transaccion)
+    
+    est = Estudiante.query.get_or_404(pago_base.estudiante_id)
+    padre = Padre.query.filter_by(estudiante_id=est.id).first()
+    
+    membrete = obtener_datos_membrete_pdf()
+    
+    return render_template(
+        'estudiantes/recibo_pago_individual.html',
+        pagos=pagos_transaccion,
+        pago_base=pago_base,
+        total_general=total_general,
+        est=est,
+        padre=padre,
+        membrete=membrete
+    )
 
 @estudiantes_bp.route('/historial_pagos/<int:estudiante_id>/imprimir')
 def imprimir_historial_pagos(estudiante_id):
-  est = Estudiante.query.get_or_404(estudiante_id)
-  padre = Padre.query.filter_by(estudiante_id=est.id).first()
-  
-  # Traer TODOS los pagos (Abonos, Pensiones y Conceptos)
-  pagos = Pago.query.filter_by(
-    estudiante_id=estudiante_id
-  ).order_by(Pago.fecha_pago.asc(), Pago.id.asc()).all()
+    """Genera la vista de impresión de todo el historial acumulado del estudiante."""
+    est = Estudiante.query.get_or_404(estudiante_id)
+    padre = Padre.query.filter_by(estudiante_id=est.id).first()
+    
+    pagos = Pago.query.filter_by(
+        estudiante_id=estudiante_id
+    ).order_by(Pago.fecha_pago.asc(), Pago.id.asc()).all()
 
-  total_recaudado = sum(float(p.monto_pagado or 0.0) for p in pagos)
-  total_descuentos = sum(float(p.descuento or 0.0) for p in pagos)
+    total_recaudado = sum(float(p.monto_pagado or 0.0) for p in pagos)
+    total_descuentos = sum(float(p.descuento or 0.0) for p in pagos)
 
-  return render_template(
-    'estudiantes/historial_pagos_imprimir.html',
-    est=est, padre=padre, pagos=pagos,
-    total_recaudado=total_recaudado, total_descuentos=total_descuentos
-  )
+    membrete = obtener_datos_membrete_pdf()
 
-
-
-
-
-
+    return render_template(
+        'estudiantes/historial_pagos_imprimir.html',
+        est=est, 
+        padre=padre, 
+        pagos=pagos,
+        total_recaudado=total_recaudado, 
+        total_descuentos=total_descuentos,
+        membrete=membrete
+    )
 
 # ==============================================================================
 # MÓDULO DE EGRESADOS: LISTADO CON FILTROS Y APERTURA DE CÁRDEX
