@@ -373,13 +373,27 @@
 
     {% endif %}
 
-    <!-- =============================================================== -->
+	<!-- =============================================================== -->
     <!-- PAGOS -->
     <!-- =============================================================== -->
 
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-warning text-dark">
-            Pagos registrados
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+            <span>Pagos y Adelantos Registrados</span>
+            <div>
+                <a href="/personal/recibo/{{ tipo }}/{{ persona.id }}"
+                   class="btn btn-sm btn-dark me-2" target="_blank" title="Ver o Imprimir Último Comprobante">
+                    <i class="bi bi-printer-fill"></i> Ver Último Recibo
+                </a>
+                
+                <!-- ⭐ AQUÍ ESTÁ LA CORRECCIÓN CLAVE ⭐ -->
+                <a href="{{ url_for('personal.imprimir_historial_pagos', tipo=tipo, id=persona.id) }}" 
+                   class="btn btn-sm btn-outline-dark" 
+                   target="_blank" 
+                   title="Imprimir Historial de Transacciones">
+                    <i class="bi bi-file-earmark-pdf-fill"></i> Imprimir Historial
+                </a>
+            </div>
         </div>
 
         <div class="card-body">
@@ -394,11 +408,6 @@
                    class="btn btn-warning">
                     Registrar Adelanto
                 </a>
-
-                <a href="/personal/recibo/{{ tipo }}/{{ persona.id }}"
-                   class="btn btn-outline-secondary">
-                    Ver Recibo
-                </a>
             </div>
 
             {% if pagos %}
@@ -407,12 +416,14 @@
                         <thead class="table-light">
                             <tr>
                                 <th>#</th>
+                                <th>Tipo / Concepto</th>
                                 <th>Mes</th>
                                 <th>Año</th>
                                 <th>Monto Base</th>
                                 <th>Adelanto</th>
                                 <th>Neto Pagado</th>
                                 <th>Fecha</th>
+                                <th class="text-center no-print">Acciones</th>
                             </tr>
                         </thead>
 
@@ -420,17 +431,29 @@
                             {% for pago in pagos %}
                             <tr>
                                 <td>{{ loop.index }}</td>
+                                <td>
+                                    {% if pago.tipo == 'Adelanto' %}
+                                    <span class="badge bg-warning text-dark">Adelanto</span> {{ pago.motivo or '' }}
+                                    {% else %}
+                                    <span class="badge bg-success">Sueldo</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ pago.mes }}</td>
                                 <td>{{ pago.anio }}</td>
                                 <td>Bs. {{ '%.2f'|format(pago.monto_base or 0) }}</td>
-                                <td>Bs. {{ '%.2f'|format(pago.monto_adelanto or 0) }}</td>
-                                <td>Bs. {{ '%.2f'|format(pago.monto_neto_pagado or 0) }}</td>
+                                <td class="text-danger">Bs. {{ '%.2f'|format(pago.monto_adelanto or (pago.monto_neto_pagado if pago.tipo == 'Adelanto' else 0)) }}</td>
+                                <td class="text-success fw-bold">Bs. {{ '%.2f'|format(pago.monto_neto_pagado or 0) }}</td>
                                 <td>
                                     {% if pago.fecha_pago %}
                                         {{ pago.fecha_pago.strftime('%d/%m/%Y') }}
                                     {% else %}
                                         -
                                     {% endif %}
+                                </td>
+                                <td class="text-center no-print">
+                                    <a href="{{ url_for('personal.reimprimir_recibo', pago_id=pago.id) }}" class="btn btn-sm btn-outline-primary" target="_blank" title="Imprimir Recibo Individual">
+                                        <i class="bi bi-printer-fill"></i> Imprimir
+                                    </a>
                                 </td>
                             </tr>
                             {% endfor %}

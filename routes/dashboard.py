@@ -23,23 +23,29 @@ def index():
         fin_mes_pasado = inicio_mes - timedelta(days=1)
 
     try:
-        total_estudiantes = Estudiante.query.filter_by(estado='Activo').count()
-    except:
+        total_estudiantes = Estudiante.query.count()
+        if total_estudiantes == 0:
+            total_estudiantes = Estudiante.query.filter(func.lower(Estudiante.estado) == 'activo').count()
+    except Exception as e:
+        print(f"Error total_estudiantes: {e}")
         total_estudiantes = 0
     
     try:
-        total_profesores = Profesor.query.filter_by(estado='Activo').count()
-    except:
+        total_profesores = Profesor.query.count()
+    except Exception as e:
+        print(f"Error total_profesores: {e}")
         total_profesores = 0
     
     try:
-        total_admin = PersonalAdministrativo.query.filter_by(estado='Activo').count()
-    except:
+        total_admin = PersonalAdministrativo.query.count()
+    except Exception as e:
+        print(f"Error total_admin: {e}")
         total_admin = 0
     
     try:
         total_materias = Materia.query.count()
-    except:
+    except Exception as e:
+        print(f"Error total_materias: {e}")
         total_materias = 0
 
     try:
@@ -100,11 +106,7 @@ def index():
         total_egresos_mes = 0.0
 
     try:
-        estudiantes_activos = Estudiante.query.filter_by(estado='Activo').count()
-        
-        # MOROSIDAD: se calcula SOLO con datos insertados en la BD
-        # Si un pago no está en la BD, no se cuenta como mora (no se asume nada)
-        # Solo se considera mora los pagos registrados con estado Pendiente o Moroso
+        estudiantes_activos = total_estudiantes
         pagos_morosos = Pago.query.filter(
             Pago.estado.in_(['Pendiente', 'Moroso'])
         ).all()

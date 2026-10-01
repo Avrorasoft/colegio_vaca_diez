@@ -1003,7 +1003,7 @@ def registrar_adelanto(tipo, id):
             nombre_persona=f"{persona.apellidos}, {persona.nombres}",
             mes=mes_adelanto,
             anio=anio_adelanto,
-            monto_base=monto,
+            monto_base=persona.salario_base or 0.0,
             monto_adelanto=0.0,
             monto_neto_pagado=monto,
             fecha_pago=datetime.now().date(),
@@ -1098,10 +1098,6 @@ def descargar_recibo_personal(filename):
 
     return send_file(filepath, as_attachment=True, download_name=filename)
 
-
-# ==============================================================================
-# GENERAR RECIBO PDF DEL PERSONAL
-# ==============================================================================
 
 def generar_recibo_personal_pdf(pago, persona, tipo_db):
     """
@@ -1214,7 +1210,7 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
     # Número y fecha
     pago_id = pago.id or 0
     numero_recibo = f"REC-PER-{datetime.now().year}-{pago_id:04d}"
-    fecha_str = pago.fecha_pago.strftime('%d/%m/%Y')
+    fecha_str = pago.fecha_pago.strftime('%d/%m/%Y') if pago.fecha_pago else datetime.now().strftime('%d/%m/%Y')
 
     info_data = [[
         Paragraph(f"<b>N° Recibo:</b> {numero_recibo}", normal_style),
@@ -1276,20 +1272,13 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
     elements.append(trabajador_table)
     elements.append(Spacer(1, 0.1 * inch))
 
-    # Detalle del pago
-    # Mostrar los adelantos que se descontaron en este pago
-    # Se acumulan los adelantos hasta sumar el monto del descuento aplicado
-    adelantos_persona = PagoPersonal.query.filter_by(
+    # Detalle del pago (Filtrado estricto por el mes y año del pago actual)
+    adelantos_mes = PagoPersonal.query.filter_by(
         persona_id=pago.persona_id,
-        tipo='Adelanto'
+        tipo='Adelanto',
+        mes=pago.mes,
+        anio=pago.anio
     ).order_by(PagoPersonal.fecha_pago.asc()).all()
-
-    adelantos_descontados = []
-    suma_acumulada = 0.0
-    for ad in adelantos_persona:
-        if suma_acumulada < (pago.monto_adelanto or 0.0):
-            adelantos_descontados.append(ad)
-            suma_acumulada += ad.monto_neto_pagado or 0.0
 
     pago_data = [
         [Paragraph("<b>DETALLE FINANCIERO</b>", normal_style), '', ''],
@@ -1307,12 +1296,12 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
 
     red_style = ParagraphStyle('RedText', parent=normal_style, textColor=colors.red)
 
-    for ad in adelantos_descontados:
+    for ad in adelantos_mes:
         motivo_txt = f"(-) Adelanto ({ad.motivo or 'Sueldo'})"
         pago_data.append([
             Paragraph(motivo_txt, red_style),
             Paragraph(ad.fecha_pago.strftime('%d/%m/%Y') if ad.fecha_pago else '-', red_style),
-            Paragraph(f"- {ad.monto_neto_pagado:.2f}", red_style)
+            Paragraph(f"- {(ad.monto_neto_pagado or 0.0):.2f}", red_style)
         ])
 
     pago_data.append([
@@ -1400,7 +1389,6 @@ def generar_recibo_personal_pdf(pago, persona, tipo_db):
 
     return buffer.getvalue()
 
-
 # ==============================================================================
 # GENERADOR DE RECIBO DE ADELANTO
 # ==============================================================================
@@ -1467,11 +1455,18 @@ def generar_recibo_adelanto_pdf(pago, persona, tipo_db):
     normal_style = ParagraphStyle(
         'NormalStyle',
         parent=styles['Normal'],
-        fontSize=12,
+        fontSize=8.5,  # Reducido de 12 a 8.5
         textColor=colors.HexColor('#333333'),
         spaceAfter=2,
         spaceBefore=0,
-        leading=15
+        leading=11
+    )
+
+    cell_center = ParagraphStyle(
+        'CellCenter', 
+        parent=normal_style, 
+        fontSize=8.5, 
+        alignment=TA_CENTER
     )
 
     elements = []
@@ -1614,3 +1609,124 @@ def api_adelantos_periodo(tipo, id):
         'total': total,
         'detalle': detalle
     })
+
+
+# ==============================================================================
+# PLANILLA GENERAL DE PAGOS (PROFESORES Y ADMINISTRATIVOS)
+# ==============================================================================
+
+@personal_bp.route('/planilla_general')
+def planilla_general():
+    """Muestra una planilla consolidada de todo el personal del colegio."""
+    profesores = Profesor.query.order_by(Profesor.apellidos.asc()).all()
+    administrativos = PersonalAdministrativo.query.order_by(PersonalAdministrativo.apellidos.asc()).all()
+
+    total_base_profesores = sum(p.salario_base or 0 for p in profesores)
+    total_adelantos_profesores = sum(p.adelanto or 0 for p in profesores)
+    total_neto_profesores = sum(p.salario_neto or 0 for p in profesores)
+
+    total_base_admins = sum(a.salario_base or 0 for a in administrativos)
+    total_adelantos_admins = sum(a.adelanto or 0 for a in administrativos)
+    total_neto_admins = sum(a.salario_neto or 0 for a in administrativos)
+
+    gran_total_base = total_base_profesores + total_base_admins
+    gran_total_adelantos = total_adelantos_profesores + total_adelantos_admins
+    gran_total_neto = total_neto_profesores + total_neto_admins
+
+    return render_template(
+        'personal/planilla_general.html',
+        profesores=profesores,
+        administrativos=administrativos,
+        gran_total_base=gran_total_base,
+        gran_total_adelantos=gran_total_adelantos,
+        gran_total_neto=gran_total_neto,
+        anio_actual=datetime.now().year
+    )
+
+# ==============================================================================
+# REIMPRESIÓN O DESCARGA DE RECIBO HISTÓRICO DE PAGO
+# ==============================================================================
+
+@personal_bp.route('/reimprimir_recibo/<int:pago_id>')
+def reimprimir_recibo(pago_id):
+    """Permite regenerar y visualizar el recibo de un pago histórico específico."""
+    pago = PagoPersonal.query.get_or_404(pago_id)
+    
+    if pago.tipo == 'Profesor':
+        persona = Profesor.query.get(pago.persona_id)
+        tipo_str = 'profesor'
+        tipo_db = 'Profesor'
+    elif pago.tipo == 'Administrativo':
+        persona = PersonalAdministrativo.query.get(pago.persona_id)
+        tipo_str = 'admin'
+        tipo_db = 'Administrativo'
+    elif pago.tipo == 'Adelanto':
+        # Si es un adelanto registrado
+        if pago.persona_id:
+            persona = Profesor.query.get(pago.persona_id) or PersonalAdministrativo.query.get(pago.persona_id)
+            tipo_str = 'profesor' if isinstance(persona, Profesor) else 'admin'
+        else:
+            flash('❌ No se encontró la persona asociada a este adelanto.', 'danger')
+            return redirect(url_for('personal.pagos_personal'))
+    else:
+        flash('❌ Tipo de pago no válido para impresión.', 'danger')
+        return redirect(url_for('personal.pagos_personal'))
+
+    if not persona:
+        flash('❌ Trabajador no encontrado.', 'danger')
+        return redirect(url_for('personal.pagos_personal'))
+
+    try:
+        if pago.tipo == 'Adelanto':
+            bytes_pdf = generar_recibo_adelanto_pdf(pago=pago, persona=persona, tipo_db=tipo_str)
+            prefijo = "recibo_adelanto"
+        else:
+            bytes_pdf = generar_recibo_personal_pdf(pago=pago, persona=persona, tipo_db=tipo_db)
+            prefijo = "recibo_personal"
+
+        recibos_dir = os.path.join(os.getcwd(), 'static', 'recibos_personal')
+        os.makedirs(recibos_dir, exist_ok=True)
+
+        recibo_filename = f"{prefijo}_{persona.id}_{pago.id}_{int(datetime.now().timestamp())}.pdf"
+        recibo_filepath = os.path.join(recibos_dir, recibo_filename)
+
+        with open(recibo_filepath, 'wb') as f:
+            f.write(bytes_pdf)
+
+        return redirect(url_for('personal.ver_recibo_pdf', filename=recibo_filename))
+
+    except Exception as e:
+        print(f"Error al generar recibo histórico: {e}")
+        flash(f'❌ Error al generar el documento PDF: {str(e)}', 'danger')
+        return redirect(url_for('personal.cardex_personal', tipo=tipo_str, id=persona.id))
+
+
+# ==============================================================================
+# IMPRESIÓN DE HISTORIAL COMPLETO DE PAGOS (VISTA DEDICADA)
+# ==============================================================================
+
+@personal_bp.route('/imprimir_historial/<tipo>/<int:id>')
+def imprimir_historial_pagos(tipo, id):
+    """Genera una vista limpia y exclusiva para imprimir todas las transacciones de pagos de un trabajador."""
+    if tipo == 'profesor':
+        persona = Profesor.query.get_or_404(id)
+        tipo_db = 'Profesor'
+    else:
+        persona = PersonalAdministrativo.query.get_or_404(id)
+        tipo_db = 'Administrativo'
+
+    pagos = PagoPersonal.query.filter(
+        PagoPersonal.persona_id == id,
+        PagoPersonal.tipo.in_([tipo_db, 'Adelanto'])
+    ).order_by(PagoPersonal.fecha_pago.desc(), PagoPersonal.id.desc()).all()
+
+    total_pagado = sum(float(p.monto_neto_pagado or 0.0) for p in pagos)
+
+    return render_template(
+        'personal/imprimir_historial.html',
+        persona=persona,
+        tipo=tipo_db,
+        pagos=pagos,
+        total_pagado=total_pagado,
+        anio_actual=datetime.now().year
+    )

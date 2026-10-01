@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Historial de Transacciones - {{ persona.apellidos }}, {{ persona.nombres }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 1.5cm;
+        }
+        body {
+            background-color: #525659; /* Fondo gris tipo visor de documentos */
+            color: #000000;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            margin: 0;
+            padding: 20px 0;
+        }
+        /* Contenedor simulador de hoja A4 en pantalla */
+        .page-sheet {
+            background-color: #ffffff;
+            width: 21cm;
+            min-height: 29.7cm;
+            margin: 0 auto;
+            padding: 1.5cm;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+            box-sizing: border-box;
+            position: relative;
+        }
+        .table th, .table td {
+            padding: 6px 8px !important;
+            font-size: 12px;
+        }
+        .print-footer {
+            position: absolute;
+            bottom: 1cm;
+            left: 1.5cm;
+            right: 1.5cm;
+            text-align: center;
+            font-size: 11px;
+            color: #555;
+            border-top: 1px solid #ccc;
+            padding-top: 5px;
+        }
+        @media print {
+            body {
+                background-color: #ffffff;
+                padding: 0;
+            }
+            .page-sheet {
+                width: 100% !important;
+                min-height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+            }
+            .no-print { display: none !important; }
+            .card {
+                border: 1px solid #000 !important;
+                box-shadow: none !important;
+                background-color: #fff !important;
+            }
+            .print-footer {
+                position: fixed;
+                bottom: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-sheet">
+        <!-- Encabezado Institucional -->
+        <div class="text-center mb-3">
+            <h5 class="fw-bold mb-1">COLEGIO DR. ANTONIO VACA DÍEZ</h5>
+            <p class="text-muted mb-0 small">Dirección Administrativa y Financiera - Riberalta, Beni, Bolivia</p>
+            <h6 class="fw-bold text-dark mt-2">REGISTRO HISTÓRICO DE TRANSACCIONES FINANCIERAS</h6>
+        </div>
+
+        <!-- Datos Generales del Trabajador -->
+        <div class="card bg-light mb-3">
+            <div class="card-body py-2 px-3">
+                <div class="row">
+                    <div class="col-8">
+                        <p class="mb-1"><strong>Apellidos y Nombres:</strong> {{ persona.apellidos }}, {{ persona.nombres }}</p>
+                        <p class="mb-0"><strong>Cédula de Identidad (C.I.):</strong> {{ persona.ci or 'S/N' }}</p>
+                    </div>
+                    <div class="col-4 text-end">
+                        <p class="mb-1"><strong>Categoría:</strong> Personal {{ tipo }}</p>
+                        <p class="mb-0"><strong>Emisión:</strong> {{ now().strftime('%d/%m/%Y') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabla Detallada de Transacciones -->
+        <h6 class="fw-bold text-dark mb-2" style="font-size: 13px;">Detalle de Pagos y Adelantos Realizados</h6>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped table-sm align-middle">
+                <thead class="table-dark text-center">
+                    <tr>
+                        <th style="width: 5%;">N°</th>
+                        <th style="width: 25%;">Transacción</th>
+                        <th style="width: 15%;">Periodo</th>
+                        <th style="width: 15%;">Base (Bs.)</th>
+                        <th style="width: 15%;">Adelanto (Bs.)</th>
+                        <th style="width: 15%;">Neto (Bs.)</th>
+                        <th style="width: 10%;">Fecha</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pagos %}
+                    <tr>
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td>
+                            {% if p.tipo == 'Adelanto' %}
+                            <span class="text-danger fw-bold">Adelanto:</span> {{ p.motivo or 'Sueldo' }}
+                            {% else %}
+                            <span class="text-success fw-bold">Sueldo</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ p.mes }} / {{ p.anio }}</td>
+                        <td class="text-end">Bs. {{ '%.2f'|format(p.monto_base or 0) }}</td>
+                        <td class="text-end text-danger">Bs. {{ '%.2f'|format(p.monto_adelanto or (p.monto_neto_pagado if p.tipo == 'Adelanto' else 0)) }}</td>
+                        <td class="text-end text-success fw-bold">Bs. {{ '%.2f'|format(p.monto_neto_pagado or 0) }}</td>
+                        <td class="text-center">{{ p.fecha_pago.strftime('%d/%m/%Y') if p.fecha_pago else '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">No existen transacciones financieras registradas para este trabajador.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Resumen de Totales -->
+        <div class="card border-dark mt-2">
+            <div class="card-body d-flex justify-content-between align-items-center py-2 px-3">
+                <h6 class="fw-bold mb-0" style="font-size: 13px;">TOTAL ACUMULADO DE TRANSACCIONES:</h6>
+                <h5 class="fw-bold text-success mb-0" style="font-size: 16px;">Bs. {{ '%.2f'|format(total_pagado) }}</h5>
+            </div>
+        </div>
+
+        <!-- Botones de Control (Ocultos al imprimir) -->
+        <div class="text-center mt-4 no-print">
+            <button onclick="window.print()" class="btn btn-primary btn-sm me-2">Imprimir Reporte</button>
+            <button onclick="window.close()" class="btn btn-secondary btn-sm">Cerrar Ventana</button>
+        </div>
+
+        <!-- Pie de página institucional -->
+        <div class="print-footer">
+            COLEGIO DR. ANTONIO VACA DÍEZ &bull; Módulo de Gestión de Personal y Finanzas
+        </div>
+    </div>
+</body>
+</html>
