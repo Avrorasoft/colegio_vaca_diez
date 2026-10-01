@@ -337,7 +337,7 @@ def generar_backup_sql_mysql():
 
 
 # =========================================================================
-# 1. GENERAR PROYECTO (.avr)
+# 1. GENERAR PROYECTO (.avr) - CORREGIDO CON WAL CHECKPOINT
 # =========================================================================
 
 @superadmin_bp.route('/generar_avr')
@@ -346,6 +346,13 @@ def generar_avr():
         return redirect(url_for('dashboard.index'))
 
     try:
+        # ⭐ FORZAR VOLCADO TOTAL DEL WAL A LA BD ANTES DE RESPALDAR
+        try:
+            db.session.execute(db.text("PRAGMA wal_checkpoint(FULL);"))
+            db.session.commit()
+        except Exception:
+            pass
+
         fecha_str = datetime.now().strftime('%Y%m%d_%H%M%S')
         nombre_avr = f"Proyecto_Colegio_{fecha_str}.avr"
 
@@ -430,6 +437,9 @@ def generar_avr():
         flash(f'❌ Error al generar proyecto .avr: {str(e)}', 'danger')
         return redirect(url_for('superadmin.boveda'))
 
+# =========================================================================
+# 2. RESTAURAR PROYECTO (.avr) - CORREGIDO CON PURGA TOTAL Y REINICIO DE MOTOR
+# =========================================================================
 
 @superadmin_bp.route('/restaurar_avr', methods=['POST'])
 def restaurar_avr():
@@ -486,7 +496,23 @@ def restaurar_avr():
                 flash('❌ No se pudo determinar la ruta de la base de datos SQLite.', 'danger')
                 return redirect(url_for('superadmin.boveda'))
             
+            # ⭐ BORRADO FÍSICO PREVIO DE .DB, -WAL Y -SHM ANTES DE GUARDAR EL NUEVO
+            for ext in ['', '-wal', '-shm']:
+                f_antiguo = db_path + ext
+                if os.path.exists(f_antiguo):
+                    try:
+                        os.remove(f_antiguo)
+                    except Exception:
+                        pass
+
             archivo.save(db_path)
+
+            # ⭐ FORZAR CHECKPOINT Y REINICIO DEL MOTOR PARA RECONOCER EL NUEVO ARCHIVO
+            try:
+                db.get_engine(current_app).dispose()
+            except Exception:
+                pass
+
             flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite (.db) aplicada con éxito.', 'success')
             return redirect(url_for('superadmin.boveda'))
 
@@ -525,10 +551,48 @@ def restaurar_avr():
                     break
 
             if db_backup_encontrado and db_path:
+                # ⭐ LIBERAR CONEXIONES NUEVAMENTE ANTES DE COPIAR EL .DB DEL .AVR
+                try:
+                    db.session.remove()
+                    db.engine.dispose()
+                except Exception:
+                    pass
+
+                # ⭐ PURGA TOTAL DE LOS ARCHIVOS ANTIGUOS (.db, -wal, -shm)
+                for ext in ['', '-wal', '-shm']:
+                    f_antiguo = db_path + ext
+                    if os.path.exists(f_antiguo):
+                        try:
+                            os.remove(f_antiguo)
+                        except Exception:
+                            pass
+
+                # COPIAR EL NUEVO ARCHIVO LIMPIO
                 shutil.copyfile(db_backup_encontrado, db_path)
+
+                # ⭐ REFRESCAR EL MOTOR DE SQLALCHEMY EN CALIENTE
+                try:
+                    db.get_engine(current_app).dispose()
+                except Exception:
+                    pass
+
                 flash('✅ ¡SISTEMA RESTAURADO! Base de datos SQLite integrada desde .avr.', 'success')
 
             elif os.path.exists(sql_file_encontrado) and db_path:
+                try:
+                    db.session.remove()
+                    db.engine.dispose()
+                except Exception:
+                    pass
+
+                for ext in ['', '-wal', '-shm']:
+                    f_antiguo = db_path + ext
+                    if os.path.exists(f_antiguo):
+                        try:
+                            os.remove(f_antiguo)
+                        except Exception:
+                            pass
+
                 db.drop_all()
                 db.create_all()
 
@@ -549,6 +613,11 @@ def restaurar_avr():
                 conexion_sqlite.commit()
                 cursor_sqlite.close()
                 conexion_sqlite.close()
+
+                try:
+                    db.get_engine(current_app).dispose()
+                except Exception:
+                    pass
 
                 flash('✅ ¡SISTEMA RESTAURADO! Registros SQL importados.', 'success')
             else:

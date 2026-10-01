@@ -976,10 +976,10 @@ LOGIN_TEMPLATE = """
 # ==============================================================================
 # EJECUCIÓN DE LA APLICACIÓN Y AUTOREPARO
 # ==============================================================================
-import logging
+#import logging
 # Silenciar la advertencia del servidor de desarrollo de Werkzeug
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+#log = logging.getLogger('werkzeug')
+#log.setLevel(logging.ERROR)
 if __name__ == '__main__':
     with app.app_context():
         # Ejecutar autoreparo y verificación inteligente antes de levantar tablas
