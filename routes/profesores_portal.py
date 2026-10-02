@@ -24,11 +24,11 @@ from flask import (
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 
-# Modelos centralizados del sistema
+# Modelos centralizados del sistema (incluyendo Falta para asistencia unificada)
 from models import (
     db, Profesor, Materia, Estudiante, Calificacion,
     CriterioEvaluacion, nivel_de_curso, Pago, PagoPersonal,
-    Tarea, EntregaTarea
+    Tarea, EntregaTarea, Falta
 )
 
 # Importación segura de RespaldoEstudiante si existe en models
@@ -54,7 +54,7 @@ except ImportError:
             profesor_id = db.Column(db.Integer, db.ForeignKey('profesores.id'), nullable=True)
             fecha_envio = db.Column(db.DateTime, default=datetime.now)
 
-# Modelo seguro de asistencia
+# Modelo seguro de asistencia (respaldo si fuera necesario)
 try:
     from models import AsistenciaEstudiante
 except ImportError:
@@ -305,9 +305,6 @@ def mis_pagos():
 
     sueldo_base = float(profesor.salario_base or 0.0)
 
-    # Identificar naturaleza de cada movimiento
-    # Si el monto pagado es igual al sueldo base (Bs. 4000), es el Sueldo Mensual Íntegro.
-    # Si es menor (ej. Bs. 60 de snack), es un adelanto o retención parcial.
     items_procesados = []
     total_sueldos_pagados = 0.0
     total_retenciones = 0.0
@@ -330,7 +327,6 @@ def mis_pagos():
             'tipo_movimiento': tipo_movimiento
         })
 
-    # Diagnóstico del mes consultado
     if mes_filtro.lower() != 'todos':
         if total_sueldos_pagados >= sueldo_base and sueldo_base > 0:
             estado_mes = 'PAGADO_TOTAL'
@@ -442,7 +438,7 @@ def alumnos_morosos():
     )
 
 
-# --- ASISTENCIA DIARIA ---
+# --- ASISTENCIA DIARIA (UNIFICADA Y BLINDADA) ---
 @profesores_portal_bp.route('/asistencia/<int:materia_id>', methods=['GET', 'POST'])
 @login_requerido
 def registrar_asistencia(materia_id):
@@ -472,42 +468,52 @@ def registrar_asistencia(materia_id):
             estado='Activo'
         ).order_by(Estudiante.apellidos.asc(), Estudiante.nombres.asc()).all()
 
-    if request.method == 'POST':
-        for est in estudiantes:
-            estado = request.form.get(f'asistencia_{est.id}', 'Presente')
-            reg = AsistenciaEstudiante.query.filter_by(
-                estudiante_id=est.id,
-                materia_id=materia.id,
-                fecha=fecha_sel
-            ).first()
-
-            if not reg:
-                reg = AsistenciaEstudiante(
-                    estudiante_id=est.id,
-                    materia_id=materia.id,
-                    fecha=fecha_sel,
-                    estado=estado
-                )
-                db.session.add(reg)
-            else:
-                reg.estado = estado
-
-        db.session.commit()
-        flash(f'✅ Asistencia registrada correctamente para la fecha {fecha_sel.strftime("%d/%m/%Y")}.', 'success')
-        return redirect(url_for('profesores_portal.registrar_asistencia', materia_id=materia.id, fecha=fecha_sel.strftime('%Y-%m-%d')))
-
-    registros = AsistenciaEstudiante.query.filter_by(
-        materia_id=materia.id,
-        fecha=fecha_sel
+    # Verificar registros previos en el modelo unificado Falta
+    registros_previos = Falta.query.filter(
+        Falta.tipo_sujeto == 'Estudiante',
+        Falta.fecha == fecha_sel,
+        Falta.sujeto_id.in_([e.id for e in estudiantes]) if estudiantes else False
     ).all()
-    asistencias_map = {r.estudiante_id: r.estado for r in registros}
+
+    bloqueado_para_docente = len(registros_previos) > 0
+
+    if request.method == 'POST':
+        if bloqueado_para_docente:
+            flash('❌ Esta asistencia ya fue enviada y registrada. Los profesores no pueden alterarla; comuníquese con administración para cualquier modificación.', 'danger')
+            return redirect(url_for('profesores_portal.registrar_asistencia', materia_id=materia.id, fecha=fecha_sel.strftime('%Y-%m-%d')))
+
+        try:
+            for est in estudiantes:
+                estado_ingresado = request.form.get(f'asistencia_{est.id}', 'Presente')
+                tipo_estado = 'Presente' if estado_ingresado == 'Presente' else 'Falta Injustificada'
+
+                nuevo_registro = Falta(
+                    tipo_sujeto='Estudiante',
+                    sujeto_id=est.id,
+                    ci_sujeto=est.ci,
+                    rude_estudiante=est.rude,
+                    fecha=fecha_sel,
+                    tipo_falta=tipo_estado,
+                    estado=tipo_estado
+                )
+                db.session.add(nuevo_registro)
+
+            db.session.commit()
+            flash(f'✅ Asistencia diaria enviada y sincronizada al instante para la fecha {fecha_sel.strftime("%d/%m/%Y")}.', 'success')
+            return redirect(url_for('profesores_portal.registrar_asistencia', materia_id=materia.id, fecha=fecha_sel.strftime('%Y-%m-%d')))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error al registrar la asistencia: {str(e)}', 'danger')
+
+    asistencias_map = {r.sujeto_id: r.tipo_falta for r in registros_previos}
 
     return render_template(
         ['profesores_portal/asistencia.html', 'asistencia.html'],
         materia=materia,
         estudiantes=estudiantes,
         fecha_sel=fecha_sel.strftime('%Y-%m-%d'),
-        asistencias_map=asistencias_map
+        asistencias_map=asistencias_map,
+        bloqueado_para_docente=bloqueado_para_docente
     )
 
 
@@ -593,7 +599,6 @@ def guardar_notas_matriz(materia_id):
         desglose_est = {}
         total_est = 0.0
 
-        # Procesamiento de subida múltiple de archivos de respaldo por estudiante
         archivos_respaldo = request.files.getlist(f"respaldo_{est.id}")
         for archivo_respaldo in archivos_respaldo:
             if archivo_respaldo and allowed_file(archivo_respaldo.filename):
@@ -715,6 +720,7 @@ def guardar_notas_matriz(materia_id):
     flash(f'✅ Calificaciones y respaldos guardados correctamente ({contador} estudiantes) para el {periodo}.', 'success')
     return redirect(url_for('profesores_portal.ver_materia', materia_id=materia_id, periodo=periodo))
 
+
 @profesores_portal_bp.route('/ver_respaldo/<filename>')
 @login_requerido
 def ver_respaldo(filename):
@@ -748,6 +754,7 @@ def eliminar_respaldo(respaldo_id):
 def nueva_evaluacion(materia_id):
     flash('❌ Acción restringida: La definición de rúbricas es de competencia exclusiva de la Administración.', 'warning')
     return redirect(url_for('profesores_portal.ver_materia', materia_id=materia_id))
+
 
 @profesores_portal_bp.route('/eliminar_evaluacion/<int:materia_id>', methods=['POST'])
 @login_requerido

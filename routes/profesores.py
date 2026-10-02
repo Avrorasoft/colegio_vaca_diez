@@ -6,7 +6,7 @@ Proyecto: Sistema de Gestión Escolar - Colegio Dr. Antonio Vaca Díez
 Desarrollado por: Avrora Soft - Vibola LLC
 Descripción: Blueprint para la gestión integral del Cárdex Docente:
              Expediente profesional, carga horaria, asignaciones de materias,
-             balance financiero y registro de pagos con validación estricta de turno.
+             balance financiero, registro de pagos y módulo unificado de Asistencia.
 ==============================================================================
 """
 
@@ -23,7 +23,7 @@ from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 from models import (
-    db, Profesor, PagoPersonal, Materia,
+    db, Profesor, PagoPersonal, Materia, Estudiante, Asistencia,
     CURSOS_POR_NIVEL, NIVELES, TURNOS
 )
 
@@ -42,7 +42,7 @@ def allowed_file(filename):
 
 
 def asegurar_turno_activo():
-    """Valida estrictamente que exista un turno activo en sesión .
+    """Valida estrictamente que exista un turno activo en sesión. 
     Cero asignaciones automáticas de turno bajo ninguna circunstancia."""
     turno = session.get('turno_activo')
     rol = session.get('rol')
@@ -152,7 +152,7 @@ def nuevo_profesor():
             sueldo_str = request.form.get('salario_base') or request.form.get('sueldo', '0')
 
             if not ci or not nombres or not apellidos:
-                flash('⚠️ C.I., Nombres y Apellidos son obligatorios.', 'warning')
+                flash('⚠️️ C.I., Nombres y Apellidos son obligatorios.', 'warning')
                 return render_template('profesores/nuevo.html')
 
             existente = Profesor.query.filter_by(ci=ci).first()
@@ -209,7 +209,7 @@ def ver_profesor(id):
     # Sincronizar adelantos reales desde la tabla PagoPersonal para el cárdex
     total_adelantos_real = db.session.query(db.func.coalesce(db.func.sum(PagoPersonal.monto_neto_pagado), 0.0)).filter(
         PagoPersonal.tipo == 'Adelanto',
-        PagoPersonal.persona_id = id,
+        PagoPersonal.persona_id == id,
         db.or_(
             PagoPersonal.ci_persona == profesor.ci,
             PagoPersonal.nombre_persona == f"{profesor.apellidos}, {profesor.nombres}"
@@ -411,6 +411,7 @@ def eliminar_profesor(id):
 
     return redirect(url_for('profesores.index'))
 
+
 # ==============================================================================
 # GESTIÓN Y DESGLOSE IMPRIMIBLE DE ADELANTOS POR DOCENTE
 # ==============================================================================
@@ -497,3 +498,118 @@ def registrar_adelanto_profesor(id):
         flash(f'❌ Error al registrar adelanto: {str(e)}', 'danger')
 
     return redirect(url_for('profesores.historial_adelantos', id=id, mes=mes))
+
+
+# ==============================================================================
+# MÓDULO UNIFICADO DE ASISTENCIA (PORTAL DE PROFESORES Y GENERAL)
+# ==============================================================================
+
+@profesores_bp.route('/asistencia', methods=['GET', 'POST'])
+def asistencia_docente():
+    """Permite al profesor registrar y actualizar la asistencia diaria de sus cursos con búsqueda flexible."""
+    profesor_id = session.get('profesor_id') or session.get('persona_id')
+    
+    materias_asignadas = []
+    if profesor_id:
+        materias_asignadas = Materia.query.filter_by(profesor_id=profesor_id).all()
+    else:
+        materias_asignadas = Materia.query.all()
+
+    materia_id = request.args.get('materia_id', type=int) or (materias_asignadas[0].id if materias_asignadas else None)
+    fecha_str = request.args.get('fecha', datetime.now().strftime('%Y-%m-%d'))
+    
+    try:
+        fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+    except ValueError:
+        fecha_obj = datetime.now().date()
+
+    materia_seleccionada = Materia.query.get(materia_id) if materia_id else None
+    estudiantes_curso = []
+
+    if materia_seleccionada:
+        # ⭐ BÚSQUEDA FLEXIBLE: Compara el curso normalizando texto para evitar desajustes
+        curso_buscado = str(materia_seleccionada.curso_id or '').strip().lower()
+        
+        # Obtenemos todos los alumnos activos y filtramos en Python de forma tolerante
+        todos_activos = Estudiante.query.filter_by(estado='Activo').order_by(Estudiante.apellidos).all()
+        
+        estudiantes_curso = [
+            e for e in todos_activos 
+            if str(e.curso or '').strip().lower() == curso_buscado 
+            or curso_buscado in str(e.curso or '').strip().lower()
+            or str(e.curso or '').strip().lower() in curso_buscado
+        ]
+
+    if request.method == 'POST':
+        materia_id_post = request.form.get('materia_id', type=int)
+        fecha_post_str = request.form.get('fecha', datetime.now().strftime('%Y-%m-%d'))
+        try:
+            fecha_post = datetime.strptime(fecha_post_str, '%Y-%m-%d').date()
+        except ValueError:
+            fecha_post = datetime.now().date()
+
+        mat_post = Materia.query.get_or_404(materia_id_post)
+        
+        # Aplicamos la misma flexibilidad al guardar
+        c_buscado = str(mat_post.curso_id or '').strip().lower()
+        todos_act = Estudiante.query.filter_by(estado='Activo').all()
+        estudiantes_post = [
+            e for e in todos_act 
+            if str(e.curso or '').strip().lower() == c_buscado 
+            or c_buscado in str(e.curso or '').strip().lower()
+            or str(e.curso or '').strip().lower() in c_buscado
+        ]
+
+        try:
+            for est in estudiantes_post:
+                estado_asistencia = request.form.get(f'estado_{est.id}', 'Presente')
+                observacion = request.form.get(f'observacion_{est.id}', '').strip()
+
+                asistencia_existente = Asistencia.query.filter_by(
+                    estudiante_id=est.id,
+                    materia_id=mat_post.id,
+                    fecha=fecha_post
+                ).first()
+
+                if asistencia_existente:
+                    asistencia_existente.estado = estado_asistencia
+                    asistencia_existente.observacion = observacion
+                else:
+                    nueva_asistencia = Asistencia(
+                        estudiante_id=est.id,
+                        materia_id=mat_post.id,
+                        ci_estudiante=est.ci,
+                        rude_estudiante=est.rude,
+                        fecha=fecha_post,
+                        estado=estado_asistencia,
+                        observacion=observacion
+                    )
+                    db.session.add(nueva_asistencia)
+
+            db.session.commit()
+            flash('✅ Asistencia diaria registrada con éxito. Sincronizada al instante con la PWA de padres.', 'success')
+            return redirect(url_for('profesores.asistencia_docente', materia_id=materia_id_post, fecha=fecha_post_str))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error al guardar la asistencia: {str(e)}', 'danger')
+
+    registros_asistencia = {}
+    if materia_seleccionada:
+        asistencias_db = Asistencia.query.filter_by(
+            materia_id=materia_seleccionada.id,
+            fecha=fecha_obj
+        ).all()
+        for a in asistencias_db:
+            registros_asistencia[a.estudiante_id] = {
+                'estado': a.estado,
+                'observacion': a.observacion or ''
+            }
+
+    return render_template(
+        'profesores/asistencia.html',
+        materias=materias_asignadas,
+        materia_seleccionada=materia_seleccionada,
+        estudiantes=estudiantes_curso,
+        fecha=fecha_obj.strftime('%Y-%m-%d'),
+        registros_asistencia=registros_asistencia
+    )

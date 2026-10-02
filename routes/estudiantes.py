@@ -2010,4 +2010,4 @@ def migracion_masiva():
         db.session.rollback()
         flash(f"Error en la migración masiva: {str(e)}", "danger")
         
-    return redirect(url_for('estudiantes.lista_estudiantes'))
+    return redirect(url_for('estudiantes.index'))

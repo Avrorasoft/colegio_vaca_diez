@@ -635,8 +635,8 @@
                 <div class="sidebar-separator"></div>
 
                 <a class="nav-link" href="/faltas/">
-                    <i class="bi bi-exclamation-triangle-fill"></i>
-                    Faltas y Licencias
+                    <i class="bi bi-calendar-check-fill"></i>
+                    Asistencia
                 </a>
 
                 <!-- Reportes de Caja -->
@@ -744,9 +744,24 @@
                     </h5>
                 </div>
 
-                <div class="text-muted d-none d-md-block">
-                    <i class="bi bi-calendar-date"></i>
-                    {{ now().strftime('%d/%m/%Y') }}
+                <div class="d-flex align-items-center gap-2 gap-md-3">
+                    
+                    <!-- ⭐ BOTONES DE MONITOR Y CONFIGURACIÓN JUNTOS -->
+                    <div class="btn-group shadow-sm">
+                        <a href="{{ url_for('reportes.monitor_config') }}" class="btn btn-outline-secondary btn-sm fw-bold d-flex align-items-center gap-1" title="Configurar Textos y Fotos del Monitor">
+                            <i class="bi bi-gear-fill"></i>
+                            <span class="d-none d-md-inline">Configurar</span>
+                        </a>
+                        <a href="{{ url_for('reportes.monitor_direccion') }}" target="_blank" class="btn btn-info text-white btn-sm fw-bold d-flex align-items-center gap-1 border-info" title="Abrir Monitor Externo de Dirección">
+                            <i class="bi bi-display-fill"></i>
+                            <span class="d-none d-md-inline">Monitor</span>
+                        </a>
+                    </div>
+
+                    <div class="text-muted d-none d-md-block">
+                        <i class="bi bi-calendar-date"></i>
+                        {{ now().strftime('%d/%m/%Y') }}
+                    </div>
                 </div>
 
             </div>

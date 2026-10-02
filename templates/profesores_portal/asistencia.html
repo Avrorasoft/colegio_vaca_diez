@@ -11,6 +11,12 @@
         </a>
     </div>
 
+    {% if bloqueado_para_docente %}
+    <div class="alert alert-warning">
+        <i class="bi bi-lock-fill"></i> <strong>Asistencia Cerrada:</strong> Esta asistencia ya fue enviada y registrada. Su edición se encuentra bloqueada para el cuerpo docente y es de exclusiva competencia administrativa.
+    </div>
+    {% endif %}
+
     <!-- Selector de Fecha -->
     <div class="card shadow-sm mb-4">
         <div class="card-body bg-light">
@@ -32,9 +38,11 @@
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-people"></i> Lista de Alumnos - Fecha: {{ fecha_sel }}</h5>
+                {% if not bloqueado_para_docente %}
                 <button type="submit" class="btn btn-success btn-sm fw-bold">
-                    <i class="bi bi-save"></i> Guardar Asistencia del Día
+                    <i class="bi bi-save"></i> Guardar y Enviar Asistencia
                 </button>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -44,7 +52,7 @@
                                 <th class="text-center" style="width: 50px;">#</th>
                                 <th>Apellidos y Nombres</th>
                                 <th style="width: 120px;" class="text-center">C.I.</th>
-                                <th class="text-center" style="width: 350px;">Estado de Asistencia</th>
+                                <th class="text-center" style="width: 250px;">Estado</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -60,14 +68,11 @@
                                         <td class="text-center"><span class="badge bg-light text-dark border">{{ est.ci }}</span></td>
                                         <td class="text-center">
                                             <div class="btn-group w-100" role="group">
-                                                <input type="radio" class="btn-check" name="asistencia_{{ est.id }}" id="pres_{{ est.id }}" value="Presente" {% if estado_actual == 'Presente' %}checked{% endif %}>
-                                                <label class="btn btn-outline-success btn-sm" for="pres_{{ est.id }}">Presente</label>
+                                                <input type="radio" class="btn-check" name="asistencia_{{ est.id }}" id="pres_{{ est.id }}" value="Presente" {% if estado_actual == 'Presente' or not estado_actual %}checked{% endif %} {% if bloqueado_para_docente %}disabled{% endif %}>
+                                                <label class="btn btn-outline-success btn-sm fw-bold" for="pres_{{ est.id }}">Presente</label>
 
-                                                <input type="radio" class="btn-check" name="asistencia_{{ est.id }}" id="aus_{{ est.id }}" value="Ausente" {% if estado_actual == 'Ausente' %}checked{% endif %}>
-                                                <label class="btn btn-outline-danger btn-sm" for="aus_{{ est.id }}">Ausente</label>
-
-                                                <input type="radio" class="btn-check" name="asistencia_{{ est.id }}" id="lic_{{ est.id }}" value="Licencia" {% if estado_actual == 'Licencia' %}checked{% endif %}>
-                                                <label class="btn btn-outline-warning btn-sm text-dark" for="lic_{{ est.id }}">Licencia</label>
+                                                <input type="radio" class="btn-check" name="asistencia_{{ est.id }}" id="aus_{{ est.id }}" value="Ausente" {% if estado_actual == 'Ausente' or estado_actual == 'Falta Injustificada' %}checked{% endif %} {% if bloqueado_para_docente %}disabled{% endif %}>
+                                                <label class="btn btn-outline-danger btn-sm fw-bold" for="aus_{{ est.id }}">Ausente</label>
                                             </div>
                                         </td>
                                     </tr>
@@ -83,11 +88,13 @@
                     </table>
                 </div>
             </div>
+            {% if not bloqueado_para_docente and estudiantes %}
             <div class="card-footer bg-white p-3 text-end">
                 <button type="submit" class="btn btn-success fw-bold px-4">
-                    <i class="bi bi-save me-1"></i> Guardar Asistencia del Día
+                    <i class="bi bi-save me-1"></i> Guardar y Enviar Asistencia
                 </button>
             </div>
+            {% endif %}
         </div>
     </form>
 </div>

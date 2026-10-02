@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Faltas y Licencias{% endblock %}
+{% block title %}Asistencia{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Faltas y Licencias</h2>
-        <a href="{{ url_for('faltas.nueva_falta') }}" class="btn btn-danger shadow-sm">
-            <i class="bi bi-plus-circle me-1"></i>Registrar Falta
+        <h2 class="mb-0"><i class="bi bi-calendar-check-fill text-primary me-2"></i>Gestión de Asistencia</h2>
+        <a href="{{ url_for('faltas.nueva_falta') }}" class="btn btn-primary shadow-sm">
+            <i class="bi bi-plus-circle me-1"></i>Registrar Asistencia
         </a>
     </div>
 
@@ -49,7 +49,7 @@
     <!-- Tabla Limpia y Optimizada -->
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-            <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-list-ul text-primary me-2"></i>Historial de Faltas</h5>
+            <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-list-ul text-primary me-2"></i>Historial de Asistencias</h5>
             <span class="badge bg-primary fs-6">{{ pagination.total }} registros</span>
         </div>
         <div class="card-body p-0">
@@ -91,12 +91,9 @@
                             </td>
                             <td class="text-center pe-3">
                                 <div class="d-flex justify-content-center gap-1">
-                                    <!-- Botón Justificar / Reformular (Abre el formulario completo original) -->
-                                    <a href="{{ url_for('faltas.editar_falta', id=falta.id) }}" class="btn btn-sm btn-outline-primary" title="Justificar o Reformular con Formulario Completo">
+                                    <a href="{{ url_for('faltas.editar_falta', id=falta.id) }}" class="btn btn-sm btn-outline-primary" title="Justificar o Reformular">
                                         <i class="bi bi-pencil-square"></i> Justificar
                                     </a>
-
-                                    <!-- Botón Eliminar -->
                                     <form method="POST" action="{{ url_for('faltas.eliminar_falta', id=falta.id) }}" class="d-inline" onsubmit="return confirm('¿Está seguro de eliminar permanentemente este registro?');">
                                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar registro">
                                             <i class="bi bi-trash"></i>
@@ -112,13 +109,13 @@
             {% else %}
             <div class="text-center py-5">
                 <i class="bi bi-check2-circle text-success" style="font-size: 4rem;"></i>
-                <p class="text-muted mt-3">No hay faltas registradas con estos filtros.</p>
+                <p class="text-muted mt-3">No hay registros de asistencia con estos filtros.</p>
             </div>
             {% endif %}
         </div>
     </div>
 
-    <!-- ⭐ PAGINACIÓN -->
+    <!-- Paginación -->
     {% if pagination.pages > 1 %}
     <nav class="mt-4">
         <ul class="pagination justify-content-center">
