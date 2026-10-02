@@ -1,4 +1,3 @@
-        
 {% extends "base.html" %}
 
 {% block title %}
@@ -460,14 +459,17 @@ document.getElementById('formSubirFoto').addEventListener('submit', async functi
     </div>
 
     <!-- =============================================================== -->
-    <!-- Historial de Pagos <a href="/estudiantes/historial_pagos/{{ est.id }}/imprimir" target="_blank" class="btn btn-outline-primary btn-sm float-end"><i class="bi bi-printer"></i> Imprimir Historial Completo</a> -->
+    <!-- Historial de Pagos -->
     <!-- =============================================================== -->
 
     <div class="card shadow mb-4">
         <div class="card-header bg-white">
             <h5 class="mb-0">
                 <i class="bi bi-cash-stack text-success"></i>
-                Historial de Pagos <a href="/estudiantes/historial_pagos/{{ est.id }}/imprimir" target="_blank" class="btn btn-outline-primary btn-sm float-end"><i class="bi bi-printer"></i> Imprimir Historial Completo</a>
+                Historial de Pagos 
+                <a href="/estudiantes/historial_pagos/{{ est.id }}/imprimir" target="_blank" class="btn btn-outline-primary btn-sm float-end">
+                    <i class="bi bi-printer"></i> Imprimir Historial Completo
+                </a>
             </h5>
         </div>
 
@@ -485,10 +487,7 @@ document.getElementById('formSubirFoto').addEventListener('submit', async functi
                             <th>Monto Pagado</th>
                             <th>Fecha de Pago</th>
                             <th>Estado</th>
-
-                            {% if session.get('superadmin_activo') %}
-                            <th class="no-print">Acciones</th>
-                            {% endif %}
+                            <th class="text-center no-print">Acciones</th>
                         </tr>
                     </thead>
 
@@ -506,25 +505,61 @@ document.getElementById('formSubirFoto').addEventListener('submit', async functi
                             <td>
                                 {% if p.estado == 'Pagado' %}
                                     <span class="badge bg-success">{{ p.estado }}</span>
+                                {% elif p.estado == 'Anulado' %}
+                                    <span class="badge bg-danger">{{ p.estado }}</span>
                                 {% else %}
                                     <span class="badge bg-warning text-dark">{{ p.estado }}</span>
                                 {% endif %}
                             </td>
 
-                            {% if session.get('superadmin_activo') %}
-                            <td class="no-print">
-                                <a href="{{ url_for('superadmin.editar_pago', id=p.id) }}"
-                                   class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-pencil-square"></i>
-                                </a>
+                            <td class="text-center no-print">
+                                <div class="btn-group" role="group">
+                                    <a href="/estudiantes/recibo_pago_individual/{{ p.id }}" target="_blank" class="btn btn-sm btn-outline-dark" title="Imprimir Recibo Individual">
+                                        <i class="bi bi-printer"></i>
+                                    </a>
+
+                                    {% if session.get('superadmin_activo') and p.estado != 'Anulado' %}
+                                    <!-- Botón para abrir modal de anulación por Bóveda -->
+                                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalAnularPago{{ p.id }}" title="Anular transacción">
+                                        <i class="bi bi-x-circle-fill"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+
+                                <!-- MODAL DE ANULACIÓN PROTEGIDO POR BÓVEDA -->
+                                {% if session.get('superadmin_activo') and p.estado != 'Anulado' %}
+                                <div class="modal fade text-start" id="modalAnularPago{{ p.id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <form action="{{ url_for('estudiantes.anular_pago', pago_id=p.id) }}" method="POST">
+                                                <div class="modal-header bg-danger text-white">
+                                                    <h5 class="modal-title">
+                                                        <i class="bi bi-shield-lock-fill"></i> Autorización de Bóveda - Anular Pago
+                                                    </h5>
+                                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <p class="text-muted small">
+                                                        Está a punto de anular el pago correspondiente al mes de <strong>{{ p.mes }} {{ p.anio }}</strong> por un monto de <strong>Bs. {{ "%.2f"|format(p.monto_pagado) }}</strong>. Esta acción dejará constancia en la auditoría del sistema.
+                                                    </p>
+                                                    <div class="mb-3">
+                                                        <label class="form-label fw-bold">Contraseña de Bóveda / Superadministrador *</label>
+                                                        <input type="password" name="boveda_password" class="form-control" placeholder="Ingrese la contraseña de autorización" required autocomplete="current-password">
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                                                    <button type="submit" class="btn btn-danger btn-sm">
+                                                        <i class="bi bi-exclamation-triangle-fill"></i> Confirmar Anulación
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
                             </td>
-                            {% endif %}
-                            <td class="text-center">
-        <a href="/estudiantes/recibo_pago_individual/{{ p.id }}" target="_blank" class="btn btn-sm btn-outline-dark" title="Imprimir Recibo Individual #{{ p.id }}">
-            <i class="bi bi-printer"></i> 🖨️
-        </a>
-    </td>
-</tr>
+                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -655,11 +690,3 @@ document.getElementById('formSubirFoto').addEventListener('submit', async functi
 </div>
 
 {% endblock %}
-
-
-
-
-
-
-
-
