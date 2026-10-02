@@ -87,6 +87,19 @@ def index():
 
     profesores = query.order_by(Profesor.apellidos.asc(), Profesor.nombres.asc()).all()
 
+    # Sincronizar y recalcular adelantos en tiempo real para la lista general
+    for p in profesores:
+        total_adelantos_real = db.session.query(db.func.coalesce(db.func.sum(PagoPersonal.monto_neto_pagado), 0.0)).filter(
+            PagoPersonal.tipo == 'Adelanto',
+            PagoPersonal.persona_id == p.id,
+            db.or_(
+                PagoPersonal.ci_persona == p.ci,
+                PagoPersonal.nombre_persona == f"{p.apellidos}, {p.nombres}"
+            )
+        ).scalar() or 0.0
+        p.adelanto = float(total_adelantos_real)
+        p.salario_neto = max(0.0, float(p.salario_base or 0.0) - p.adelanto)
+
     # Métricas para las tarjetas de resumen
     todos = Profesor.query.all()
     total_docentes = len(todos)
@@ -192,6 +205,20 @@ def nuevo_profesor():
 def ver_profesor(id):
     profesor = Profesor.query.options(joinedload(Profesor.materias)).get_or_404(id)
     materias = profesor.materias if profesor.materias else []
+
+    # Sincronizar adelantos reales desde la tabla PagoPersonal para el cárdex
+    total_adelantos_real = db.session.query(db.func.coalesce(db.func.sum(PagoPersonal.monto_neto_pagado), 0.0)).filter(
+        PagoPersonal.tipo == 'Adelanto',
+        PagoPersonal.persona_id = id,
+        db.or_(
+            PagoPersonal.ci_persona == profesor.ci,
+            PagoPersonal.nombre_persona == f"{profesor.apellidos}, {profesor.nombres}"
+        )
+    ).scalar() or 0.0
+
+    profesor.adelanto = float(total_adelantos_real)
+    profesor.salario_neto = max(0.0, float(profesor.salario_base or 0.0) - profesor.adelanto)
+    db.session.commit()
 
     pagos = PagoPersonal.query.filter_by(
         tipo='Profesor',
@@ -449,7 +476,7 @@ def registrar_adelanto_profesor(id):
             nombre_persona=f"{profesor.apellidos}, {profesor.nombres}",
             mes=mes,
             anio=anio,
-            monto_base=monto,
+            monto_base=0.0,
             monto_adelanto=0.0,
             monto_neto_pagado=monto,
             fecha_pago=datetime.now().date(),

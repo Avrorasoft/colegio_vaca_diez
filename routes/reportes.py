@@ -19,16 +19,30 @@ reportes_bp = Blueprint('reportes', __name__, url_prefix='/reportes', template_f
 @reportes_bp.route('/economico/manana')
 def economico_manana():
     """Reporte económico exclusivo del Turno Mañana (Ingresos y Egresos)"""
-    # 1. Ingresos del Turno Mañana (Incluyendo abonos donde monto_pagado > 0)
-    pagos = Pago.query.filter(Pago.turno_responsable == 'Mañana', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
+    # 1. Ingresos del Turno Mañana con protección tolerante ante columnas ausentes[cite: 1, 2]
+    try:
+        pagos = [p for p in Pago.query.filter(Pago.turno_responsable == 'Mañana', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all() if getattr(p, 'estado', 'Pagado') != 'Anulado']
+    except Exception:
+        pagos = [p for p in Pago.query.filter(Pago.turno_responsable == 'Mañana', Pago.monto_pagado > 0).all()]
+    
     total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos: Gastos Operativos
-    gastos = Gasto.query.all()
+    # 2. Egresos: Gastos Operativos seguros[cite: 1, 2]
+    try:
+        todos_gastos = Gasto.query.all()
+    except Exception:
+        todos_gastos = []
+    
+    gastos = [g for g in todos_gastos if getattr(g, 'estado', 'Activo') != 'Anulado']
     total_gastos = sum(g.monto for g in gastos)
 
-    # 3. Egresos: Pagos al Personal
-    pagos_personal = PagoPersonal.query.all()
+    # 3. Egresos: Pagos al Personal seguros[cite: 1, 2]
+    try:
+        todos_personal = PagoPersonal.query.all()
+    except Exception:
+        todos_personal = []
+
+    pagos_personal = [p for p in todos_personal if getattr(p, 'estado', 'Pagado') != 'Anulado']
     total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
     total_egresos = total_gastos + total_personal
@@ -50,16 +64,30 @@ def economico_manana():
 @reportes_bp.route('/economico/tarde')
 def economico_tarde():
     """Reporte económico exclusivo del Turno Tarde (Ingresos y Egresos)"""
-    # 1. Ingresos del Turno Tarde (Incluyendo abonos donde monto_pagado > 0)
-    pagos = Pago.query.filter(Pago.turno_responsable == 'Tarde', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
+    # 1. Ingresos del Turno Tarde con protección tolerante[cite: 1, 2]
+    try:
+        pagos = [p for p in Pago.query.filter(Pago.turno_responsable == 'Tarde', Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all() if getattr(p, 'estado', 'Pagado') != 'Anulado']
+    except Exception:
+        pagos = [p for p in Pago.query.filter(Pago.turno_responsable == 'Tarde', Pago.monto_pagado > 0).all()]
+    
     total = sum(p.monto_pagado for p in pagos)
 
-    # 2. Egresos: Gastos Operativos
-    gastos = Gasto.query.all()
+    # 2. Egresos: Gastos Operativos seguros[cite: 1, 2]
+    try:
+        todos_gastos = Gasto.query.all()
+    except Exception:
+        todos_gastos = []
+
+    gastos = [g for g in todos_gastos if getattr(g, 'estado', 'Activo') != 'Anulado']
     total_gastos = sum(g.monto for g in gastos)
 
-    # 3. Egresos: Pagos al Personal
-    pagos_personal = PagoPersonal.query.all()
+    # 3. Egresos: Pagos al Personal seguros[cite: 1, 2]
+    try:
+        todos_personal = PagoPersonal.query.all()
+    except Exception:
+        todos_personal = []
+
+    pagos_personal = [p for p in todos_personal if getattr(p, 'estado', 'Pagado') != 'Anulado']
     total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
     total_egresos = total_gastos + total_personal
@@ -81,18 +109,32 @@ def economico_tarde():
 @reportes_bp.route('/economico/general')
 def economico_general():
     """Reporte económico general consolidado (Mañana y Tarde - Ingresos y Egresos)"""
-    # 1. Ingresos Generales (Incluyendo abonos donde monto_pagado > 0)
-    pagos = Pago.query.filter(Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all()
+    # 1. Ingresos Generales seguros[cite: 1, 2]
+    try:
+        pagos = [p for p in Pago.query.filter(Pago.monto_pagado > 0).order_by(Pago.fecha_pago.desc()).all() if getattr(p, 'estado', 'Pagado') != 'Anulado']
+    except Exception:
+        pagos = [p for p in Pago.query.filter(Pago.monto_pagado > 0).all()]
+
     total_general = sum(p.monto_pagado for p in pagos)
     
     total_manana = sum(p.monto_pagado for p in pagos if p.turno_responsable == 'Mañana')
     total_tarde = sum(p.monto_pagado for p in pagos if p.turno_responsable == 'Tarde')
 
-    # 2. Egresos Generales (Gastos y Personal)
-    gastos = Gasto.query.all()
+    # 2. Egresos Generales seguros[cite: 1, 2]
+    try:
+        todos_gastos = Gasto.query.all()
+    except Exception:
+        todos_gastos = []
+
+    gastos = [g for g in todos_gastos if getattr(g, 'estado', 'Activo') != 'Anulado']
     total_gastos = sum(g.monto for g in gastos)
 
-    pagos_personal = PagoPersonal.query.all()
+    try:
+        todos_personal = PagoPersonal.query.all()
+    except Exception:
+        todos_personal = []
+
+    pagos_personal = [p for p in todos_personal if getattr(p, 'estado', 'Pagado') != 'Anulado']
     total_personal = sum(p.monto_neto_pagado for p in pagos_personal)
 
     total_egresos = total_gastos + total_personal

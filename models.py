@@ -161,6 +161,7 @@ class Estudiante(db.Model):
     def __repr__(self):
         return f"<Estudiante CI:{self.ci} - {self.apellidos}, {self.nombres}>"
 
+
 # ==============================================================================
 # PADRE / TUTOR (AUTENTICACIÓN PWA CON CONTRASEÑA ASIGNABLE)
 # ==============================================================================
@@ -290,13 +291,13 @@ class CriterioEvaluacion(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
-    nivel = db.Column(db.String(20), nullable=False)                # 'Nidito', 'Primaria', 'Secundaria'
-    tipo_evaluacion = db.Column(db.String(20), default='NUMERICA')   # 'NUMERICA' o 'CUALITATIVA'
+    nivel = db.Column(db.String(20), nullable=False)                             # 'Nidito', 'Primaria', 'Secundaria'
+    tipo_evaluacion = db.Column(db.String(20), default='NUMERICA')    # 'NUMERICA' o 'CUALITATIVA'
 
     # Parámetros Cuantitativos (Primaria / Secundaria)
-    puntaje_maximo = db.Column(db.Integer, default=0)                # Asistencia: 10, Participación: 20, etc.
-    permite_decimales = db.Column(db.Boolean, default=False)         # False para Asistencia y Participación
-    paso_step = db.Column(db.Float, default=1.0)                     # 1.0 (enteros) o 0.1/0.5 (decimales)
+    puntaje_maximo = db.Column(db.Integer, default=0)                           # Asistencia: 10, Participación: 20, etc.
+    permite_decimales = db.Column(db.Boolean, default=False)          # False para Asistencia y Participación
+    paso_step = db.Column(db.Float, default=1.0)                        # 1.0 (enteros) o 0.1/0.5 (decimales)
 
     # Parámetros Cualitativos (Nidito / Nivel Inicial)
     opciones_cualitativas = db.Column(db.String(255), nullable=True)
@@ -494,9 +495,10 @@ class Gasto(db.Model):
     proveedor = db.Column(db.String(100), nullable=True)
     responsable = db.Column(db.String(100), nullable=True)
     metodo_pago = db.Column(db.String(20), default='Efectivo')
-    
-    # Columna para almacenar el archivo adjunto (imágenes, PDFs, Word y Excel)
     archivo = db.Column(db.String(255), nullable=True)
+    
+    # Definido con nullable=True para que las consultas antiguas no fallen antes de la migración automática
+    estado = db.Column(db.String(20), nullable=True, default='Activo')
 
     def __repr__(self):
         return f"<Gasto {self.categoria}>"
@@ -807,6 +809,17 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA journal_mode = WAL;")
     cursor.execute("PRAGMA synchronous = NORMAL;")
     cursor.execute("PRAGMA busy_timeout = 5000;")
+    
+    # ⭐ AUTOCORRECCIÓN AUTOMÁTICA DE ESQUEMA PARA LA TABLA GASTOS
+    try:
+        cursor.execute("PRAGMA table_info(gastos);")
+        columnas = [col[1] for col in cursor.fetchall()]
+        if columnas and 'estado' not in columnas:
+            cursor.execute("ALTER TABLE gastos ADD COLUMN estado TEXT DEFAULT 'Activo';")
+            dbapi_connection.commit()
+    except Exception:
+        pass
+
     cursor.close()
 
 

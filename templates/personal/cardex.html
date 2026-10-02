@@ -1,3 +1,12 @@
+<!--
+==============================================================================
+Archivo: templates/personal/cardex.html
+Proyecto: ASestud-Konetz - Sistema de Gestión Escolar
+Descripción: Vista de cárdex individual para profesores y administrativo, 
+             con historial financiero, gestión de materias y opción exclusiva de anulación.
+==============================================================================
+-->
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -373,27 +382,13 @@
 
     {% endif %}
 
-	<!-- =============================================================== -->
+    <!-- =============================================================== -->
     <!-- PAGOS -->
     <!-- =============================================================== -->
 
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
-            <span>Pagos y Adelantos Registrados</span>
-            <div>
-                <a href="/personal/recibo/{{ tipo }}/{{ persona.id }}"
-                   class="btn btn-sm btn-dark me-2" target="_blank" title="Ver o Imprimir Último Comprobante">
-                    <i class="bi bi-printer-fill"></i> Ver Último Recibo
-                </a>
-                
-                <!-- ⭐ AQUÍ ESTÁ LA CORRECCIÓN CLAVE ⭐ -->
-                <a href="{{ url_for('personal.imprimir_historial_pagos', tipo=tipo, id=persona.id) }}" 
-                   class="btn btn-sm btn-outline-dark" 
-                   target="_blank" 
-                   title="Imprimir Historial de Transacciones">
-                    <i class="bi bi-file-earmark-pdf-fill"></i> Imprimir Historial
-                </a>
-            </div>
+        <div class="card-header bg-warning text-dark">
+            Pagos registrados
         </div>
 
         <div class="card-body">
@@ -408,6 +403,11 @@
                    class="btn btn-warning">
                     Registrar Adelanto
                 </a>
+
+                <a href="/personal/recibo/{{ tipo }}/{{ persona.id }}"
+                   class="btn btn-outline-secondary">
+                    Ver Recibo
+                </a>
             </div>
 
             {% if pagos %}
@@ -416,7 +416,6 @@
                         <thead class="table-light">
                             <tr>
                                 <th>#</th>
-                                <th>Tipo / Concepto</th>
                                 <th>Mes</th>
                                 <th>Año</th>
                                 <th>Monto Base</th>
@@ -429,20 +428,20 @@
 
                         <tbody>
                             {% for pago in pagos %}
-                            <tr>
+                            <tr class="{% if pago.estado == 'Anulado' %}table-danger opacity-75{% endif %}">
                                 <td>{{ loop.index }}</td>
-                                <td>
-                                    {% if pago.tipo == 'Adelanto' %}
-                                    <span class="badge bg-warning text-dark">Adelanto</span> {{ pago.motivo or '' }}
-                                    {% else %}
-                                    <span class="badge bg-success">Sueldo</span>
-                                    {% endif %}
-                                </td>
                                 <td>{{ pago.mes }}</td>
                                 <td>{{ pago.anio }}</td>
                                 <td>Bs. {{ '%.2f'|format(pago.monto_base or 0) }}</td>
-                                <td class="text-danger">Bs. {{ '%.2f'|format(pago.monto_adelanto or (pago.monto_neto_pagado if pago.tipo == 'Adelanto' else 0)) }}</td>
-                                <td class="text-success fw-bold">Bs. {{ '%.2f'|format(pago.monto_neto_pagado or 0) }}</td>
+                                <td>Bs. {{ '%.2f'|format(pago.monto_adelanto or 0) }}</td>
+                                <td>
+                                    Bs. {{ '%.2f'|format(pago.monto_neto_pagado or 0) }}
+                                    {% if pago.estado == 'Anulado' %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-danger fs-6 fw-bold px-2 py-1 shadow-sm">ANULADA</span>
+                                        </div>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if pago.fecha_pago %}
                                         {{ pago.fecha_pago.strftime('%d/%m/%Y') }}
@@ -451,9 +450,41 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-center no-print">
-                                    <a href="{{ url_for('personal.reimprimir_recibo', pago_id=pago.id) }}" class="btn btn-sm btn-outline-primary" target="_blank" title="Imprimir Recibo Individual">
-                                        <i class="bi bi-printer-fill"></i> Imprimir
-                                    </a>
+                                    {% if pago.estado != 'Anulado' %}
+                                        <!-- Botón único para anular protegido con Bóveda (Sin edición) -->
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalAnularPago{{ pago.id }}" title="Anular transacción">
+                                            <i class="fas fa-ban me-1"></i> Anular
+                                        </button>
+
+                                        <!-- Modal de confirmación con contraseña de Bóveda -->
+                                        <div class="modal fade text-dark" id="modalAnularPago{{ pago.id }}" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content bg-dark text-light border-warning">
+                                                    <div class="modal-header border-secondary">
+                                                        <h5 class="modal-title text-warning fw-bold">
+                                                            <i class="fas fa-lock me-2"></i> Autorización de Bóveda Requerida
+                                                        </h5>
+                                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <form action="{{ url_for('personal.eliminar_pago_personal', pago_id=pago.id) }}" method="POST">
+                                                        <div class="modal-body text-start">
+                                                            <p>¿Está seguro de anular este registro financiero de <strong>Bs. {{ '%.2f'|format(pago.monto_neto_pagado or 0) }}</strong> correspondiente a <strong>{{ pago.mes }} / {{ pago.anio }}</strong>?</p>
+                                                            <div class="mb-3">
+                                                                <label for="boveda_password_{{ pago.id }}" class="form-label fw-bold text-warning">Contraseña de la Bóveda <span class="text-danger">*</span></label>
+                                                                <input type="password" class="form-control bg-dark text-light border-warning" id="boveda_password_{{ pago.id }}" name="boveda_password" placeholder="Ingrese la contraseña de seguridad" required>
+                                                            </div>
+                                                        </div>
+                                                        <div class="modal-footer border-secondary">
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                            <button type="submit" class="btn btn-danger fw-bold">Confirmar Anulación</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Cerrado</span>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -471,6 +502,3 @@
 
 </div>
 {% endblock %}
-
-
-

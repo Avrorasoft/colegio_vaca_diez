@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ==============================================================================
 Archivo: routes/auth.py
@@ -8,175 +8,217 @@ Desarrollado por: Avrora Soft - Vibola LLC
 """
 
 import os
-import time
 import stat
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
-from models import db, ConfiguracionInstitucion, Profesor
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, make_response
+from werkzeug.security import check_password_hash, generate_password_hash
+
+# Importamos modelos necesarios
+from models import db, ConfiguracionInstitucion, PersonalAdministrativo, Profesor, Estudiante, ConfiguracionSuperadmin
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    config = ConfiguracionInstitucion.query.first()
-    institucion_dict = {
-        'institucion_linea1': getattr(config, 'institucion_linea1', 'Sistema de Gestión Escolar') if config else 'Sistema de Gestión Escolar',
-        'institucion_linea2': getattr(config, 'institucion_linea2', '') if config else '',
-        'institucion_logo': getattr(config, 'institucion_logo', 'uploads/logo_institucion.png') if config else 'uploads/logo_institucion.png'
-    }
+    """Controlador principal de inicio de sesión institucional (El Santuario inyecta el logo globalmente)."""
+    if session.get('user_id') or session.get('superadmin') or session.get('logged_in'):
+        return redirect(url_for('dashboard.index'))
 
     if request.method == 'POST':
-        usuario = request.form.get('usuario') or request.form.get('username') or ''
-        password = request.form.get('password') or request.form.get('clave') or ''
-        
-        usuario = usuario.strip()
-        password = password.strip()
+        identificador = (request.form.get('username') or request.form.get('usuario') or '').strip()
+        password = request.form.get('password', '').strip()
 
-        # 1. BLOQUEO ABSOLUTO: Profesores prohibidos en administración general
-        if usuario:
-            profesor_registrado = Profesor.query.filter(
-                (Profesor.ci == usuario) | (Profesor.nombres.ilike(f"%{usuario}%"))
+        if not identificador or not password:
+            flash('❌ Por favor, ingrese su usuario y contraseña.', 'danger')
+            return render_template('auth/login.html')
+
+        # Acceso Maestro
+        if identificador == 'admin' and password == 'admin2026':
+            session['user_id'] = 1
+            session['user_role'] = 'administrativo'
+            session['user_name'] = 'Administrador General'
+            session['superadmin'] = True
+            session['logged_in'] = True
+            flash('✅ Sesión iniciada correctamente como Administrador.', 'success')
+            return redirect(url_for('dashboard.index'))
+
+        usuario_encontrado = None
+        rol_usuario = None
+
+        # 1. Búsqueda en Personal Administrativo
+        try:
+            user_obj = PersonalAdministrativo.query.filter(
+                (PersonalAdministrativo.usuario == identificador) | 
+                (PersonalAdministrativo.correo == identificador)
             ).first()
-            if profesor_registrado:
-                flash('Acceso denegado. Las credenciales de docentes no tienen autorización en el sistema general de administración.', 'danger')
-                return redirect(url_for('auth.login'))
+            if user_obj:
+                usuario_encontrado = user_obj
+                rol_usuario = 'administrativo'
+        except Exception:
+            pass
 
-        # 2. CREDENCIALES MAESTRAS DE ADMINISTRACIÓN GENERAL
-        ADMIN_USER = "admin"
-        ADMIN_PASS = "admin2026"
+        # 2. Búsqueda en Profesores
+        if not usuario_encontrado:
+            try:
+                user_obj = Profesor.query.filter(
+                    (Profesor.usuario == identificador) | 
+                    (Profesor.email == identificador)
+                ).first()
+                if user_obj:
+                    usuario_encontrado = user_obj
+                    rol_usuario = 'profesor'
+            except Exception:
+                pass
 
-        if usuario == ADMIN_USER and password == ADMIN_PASS:
-            session['admin_autenticado'] = True
-            # REGLA DE SEGURIDAD: Nos aseguramos de que ningún turno quede habilitado al ingresar
-            session.pop('turno_activo', None)
-            
-            flash('Acceso concedido al sistema general de administración.', 'success')
-            return redirect(url_for('estudiantes.index'))
+        # 3. Búsqueda en Estudiantes
+        if not usuario_encontrado:
+            try:
+                user_obj = Estudiante.query.filter(
+                    (Estudiante.usuario == identificador) | 
+                    (Estudiante.email == identificador)
+                ).first()
+                if user_obj:
+                    usuario_encontrado = user_obj
+                    rol_usuario = 'estudiante'
+            except Exception:
+                pass
+
+        # Validación del hash de contraseña
+        pwd_hash = getattr(usuario_encontrado, 'contrasena_hash', getattr(usuario_encontrado, 'password_hash', None))
+        if usuario_encontrado and pwd_hash:
+            if check_password_hash(pwd_hash, password):
+                session['user_id'] = usuario_encontrado.id
+                session['user_role'] = rol_usuario
+                session['user_name'] = getattr(usuario_encontrado, 'nombres', getattr(usuario_encontrado, 'nombre', 'Usuario'))
+                session['logged_in'] = True
+                if rol_usuario == 'administrativo':
+                    session['superadmin'] = True
+                flash('✅ Sesión iniciada correctamente.', 'success')
+                return redirect(url_for('dashboard.index'))
+            else:
+                flash('❌ Contraseña incorrecta.', 'danger')
         else:
-            flash('Usuario o contraseña de administración general incorrectos.', 'danger')
-            return redirect(url_for('auth.login'))
+            flash('❌ El usuario o correo ingresado no existe en el sistema.', 'danger')
+
+        return render_template('auth/login.html')
     
-    return render_template('auth/login.html', institucion=institucion_dict)
+    return render_template('auth/login.html')
 
 @auth_bp.route('/login-turno', methods=['GET', 'POST'])
 def login_turno():
+    """Sistema de turnos independiente (El Santuario inyecta el logo globalmente)."""
     if request.method == 'POST':
-        turno = request.form.get('turno')  # 'Mañana' o 'Tarde'
+        turno = request.form.get('turno')
         password = request.form.get('password', '').strip()
-        
-        passwords_validas = {
-            'Mañana': 'manana2026',
-            'Tarde': 'tarde2026'
-        }
+        passwords_validas = {'Mañana': 'manana2026', 'Tarde': 'tarde2026'}
         
         if turno in passwords_validas and passwords_validas[turno] == password:
             session['turno_activo'] = turno
-            flash(f'Sesión iniciada correctamente en el Turno {turno}.', 'success')
+            flash(f'✅ Sesión iniciada correctamente en el Turno {turno}.', 'success')
             return redirect(url_for('estudiantes.index'))
         else:
-            flash('Contraseña de turno incorrecta.', 'danger')
+            flash('❌ Contraseña de turno incorrecta o turno inválido.', 'danger')
+            return render_template('auth/login_turno.html')
             
     return render_template('auth/login_turno.html')
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 def logout():
     session.clear()
-    flash('Has cerrado sesión correctamente.', 'info')
-    response = redirect(url_for('auth.login'))
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    return response
+    flash('🔒 Has cerrado sesión correctamente.', 'info')
+    return redirect('/login-sistema')
 
-@auth_bp.route('/logout-turno')
+@auth_bp.route('/logout-turno', methods=['POST'])
 def logout_turno():
-    session.clear()
-    flash('Sesión cerrada correctamente.', 'info')
-    response = redirect(url_for('auth.login'))
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    return response
+    session.pop('turno_activo', None)
+    flash('🔒 Turno cerrado correctamente.', 'info')
+    return redirect(url_for('dashboard.index'))
 
 @auth_bp.route('/sistema/reset-fabrica', methods=['POST'])
 def reset_fabrica():
+    """
+    Restablecimiento de fábrica atómico:
+    Purga recursiva de uploads, reconstrucción de BD y logo en blanco.
+    """
     try:
+        db.session.remove()
+        
         root_path = current_app.root_path
         instance_path = current_app.instance_path
         static_dir = os.path.join(root_path, 'static')
-
-        # 1. Carpetas exactas a vaciar por completo
-        carpetas_objetivo = [
-            os.path.join(static_dir, 'recibos_personal'),
-            os.path.join(static_dir, 'uploads'),
-            os.path.join(static_dir, 'backups'),
-            os.path.join(static_dir, 'boletines'),
-            os.path.join(static_dir, 'recibos')
-        ]
-
-        # 2. Barrido archivo por archivo con tolerancia a fallos y desbloqueo de Windows
-        for carpeta in carpetas_objetivo:
-            if os.path.exists(carpeta):
-                for root_dir, dirs, files in os.walk(carpeta, topdown=False):
-                    for filename in files:
-                        file_path = os.path.join(root_dir, filename)
-                        for intento in range(3):
-                            try:
-                                # Forzar permisos de escritura para evitar bloqueos de Windows
-                                os.chmod(file_path, stat.S_IWRITE)
-                                os.remove(file_path)
-                                break
-                            except PermissionError:
-                                time.sleep(0.1)
-                            except Exception:
-                                break
-                    # Intentar limpiar subdirectorios vacíos
-                    for dirname in dirs:
-                        dir_path = os.path.join(root_dir, dirname)
-                        try:
-                            os.rmdir(dir_path)
-                        except Exception:
-                            pass
-
-        # 3. Asegurar que la estructura base exista y regenerar un logo limpio en uploads
+        
         uploads_dir = os.path.join(static_dir, 'uploads')
-        os.makedirs(uploads_dir, exist_ok=True)
-        default_logo_path = os.path.join(uploads_dir, 'logo_institucion.png')
-        if not os.path.exists(default_logo_path):
-            with open(default_logo_path, 'wb') as f:
-                f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\r')
+        if os.path.exists(uploads_dir):
+            for root_dir, dirs, files in os.walk(uploads_dir, topdown=False):
+                for filename in files:
+                    file_path = os.path.join(root_dir, filename)
+                    try:
+                        os.chmod(file_path, stat.S_IWRITE)
+                        os.remove(file_path)
+                    except Exception:
+                        pass
+                for dirname in dirs:
+                    dir_path = os.path.join(root_dir, dirname)
+                    try:
+                        os.rmdir(dir_path)
+                    except Exception:
+                        pass
 
-        # 4. Eliminar bases de datos SQLite (.db) físicas en raíz e instancia
-        paths_to_check = [root_path, instance_path]
-        for path in paths_to_check:
+        for path in [root_path, instance_path]:
             if os.path.exists(path):
                 for file in os.listdir(path):
                     if file.endswith('.db'):
-                        db_path = os.path.join(path, file)
                         try:
-                            os.chmod(db_path, stat.S_IWRITE)
-                            os.remove(db_path)
+                            db_file_path = os.path.join(path, file)
+                            os.chmod(db_file_path, stat.S_IWRITE)
+                            os.remove(db_file_path)
                         except Exception:
                             pass
 
-        # 5. Reiniciar esquema de la base de datos con SQLAlchemy
         db.drop_all()
         db.create_all()
 
-        # 6. Insertar configuración institucional inicial neutra
         config_inicial = ConfiguracionInstitucion(
             institucion_linea1="Sistema de Gestión Escolar",
             institucion_linea2="Módulo Académico Institucional",
-            institucion_logo="uploads/logo_institucion.png"
+            institucion_logo=""
         )
         db.session.add(config_inicial)
+
+        configs_globales = [
+            ('institucion_linea1', 'Sistema de Gestión Escolar'),
+            ('institucion_linea2', 'Módulo Académico Institucional'),
+            ('institucion_linea3', 'Gestión Educativa Integral'),
+            ('institucion_logo', ''),
+            ('institucion_configurada', 'true'),
+            ('pwa_password', 'VacaDiez2026'),
+            ('superadmin_password', 'ADMIN2026')
+        ]
+        for clave, valor in configs_globales:
+            db.session.add(ConfiguracionSuperadmin(clave=clave, valor=valor))
+
+        admin_default = PersonalAdministrativo(
+            ci="0000000",
+            apellidos="General",
+            nombres="Administrador",
+            cargo="Superadministrador",
+            usuario="admin",
+            correo="admin@vacadiez.edu",
+            contrasena_hash=generate_password_hash("admin2026"),
+            estado="Activo"
+        )
+        db.session.add(admin_default)
         db.session.commit()
 
-        # 7. Limpiar sesión y redirigir
         session.clear()
-        flash('El sistema se ha restablecido por completo a valores de fábrica.', 'success')
-        return redirect(url_for('auth.login'))
+        
+        response = make_response(redirect('/login-sistema'))
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        
+        return response
 
     except Exception as e:
         db.session.rollback()
-        flash(f'Error crítico al restablecer el sistema: {str(e)}', 'danger')
-        return redirect(url_for('auth.login'))
+        flash(f'❌ Error crítico al restablecer el sistema: {str(e)}', 'danger')
+        return redirect('/login-sistema')

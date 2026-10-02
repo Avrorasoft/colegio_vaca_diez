@@ -8,5 +8,3 @@ instance/
 .vscode/
 build/
 dist/
-
-cloudflared.exe

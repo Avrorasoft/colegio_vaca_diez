@@ -37,7 +37,7 @@
             max-width: 260px;
             background: #0f172a;
             color: #ffffff;
-            transition: all 0.3s;
+            transition: margin-left 0.3s ease;
             display: flex;
             flex-direction: column;
         }
@@ -457,60 +457,79 @@
         }
 
         /* ===================================================== */
-        /* IMPRESIÓN */
+        /* IMPRESIÓN PROFESIONAL EN BLANCO Y NEGRO CON MEMBRETE */
         /* ===================================================== */
 
         @media print {
             .no-print,
             nav, .navbar, #sidebar, .sidebar, footer, .footer,
             .btn, .btn-group, form button, a.btn,
-            .topbar, #sidebarOverlay {
+            .topbar, #sidebarOverlay, .badge {
                 display: none !important;
             }
 
+            .print-institutional-header {
+                display: block !important;
+            }
+
             @page {
-                margin: 0.5cm;
+                margin: 1cm;
                 size: auto;
             }
 
             html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
                 height: auto !important;
                 overflow: visible !important;
+                font-size: 12pt !important;
             }
 
-            .wrapper {
-                height: auto !important;
-                overflow: visible !important;
-                display: block !important;
-            }
-
-            .main-content {
-                width: 100% !important;
-            }
-
-            .content-area {
-                overflow: visible !important;
-                padding: 0 !important;
-            }
-
-            body {
-                margin: 0;
-                padding: 0;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-
-            .container, .container-fluid {
-                max-width: 100% !important;
+            .wrapper, .main-content, .content-area, .container, .container-fluid {
+                background: #ffffff !important;
+                color: #000000 !important;
                 width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                display: block !important;
             }
 
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
+            /* Forzar tarjetas y contenedores a fondo blanco y bordes negros limpios */
+            .card, .card-body, .card-header {
+                background: #ffffff !important;
+                color: #000000 !important;
+                box-shadow: none !important;
+                border: 1px solid #000000 !important;
+                border-radius: 0 !important;
             }
+
+            /* Tablas en formato clásico de impresión B/N */
+            table, .table {
+                width: 100% !important;
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                border-collapse: collapse !important;
+            }
+
+            .table th, .table td {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                border: 1px solid #000000 !important;
+                padding: 8px !important;
+            }
+
+            h1, h2, h3, h4, h5, h6, p, span, td, th {
+                color: #000000 !important;
+            }
+        }
+
+        /* Encabezado institucional exclusivo para impresión (oculto en pantalla normal) */
+        .print-institutional-header {
+            display: none;
+            width: 100%;
+            border-bottom: 2px solid #000000;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
         }
     </style>
 
@@ -553,25 +572,36 @@
 
         <nav id="sidebar">
             <!-- LOGO Y NOMBRE DE LA INSTITUCIÓN -->
-            <div class="sidebar-brand">
-                {% if institucion and institucion.get('institucion_logo') %}
-                <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-img">
-                {% endif %}
+            <div class="sidebar-brand text-center">
+                <!-- LOGO ESTABILIZADO (Sin pestañeos molestos) -->
+                <img src="{{ url_for('superadmin.ver_logo_institucion') }}?v={{ nombre_logo }}" 
+                     alt="Logo" 
+                     style="width: 90px; height: 90px; object-fit: contain; margin-bottom: 10px;" 
+                     class="bg-white rounded p-1 shadow-sm"
+                     id="logo-institucional-fijo">
 
                 <h5>
-                    {{ institucion.get('institucion_linea1', 'Sistema de Gestión Escolar') if institucion else 'Sistema de Gestión Escolar' }}
+                    {% if institucion %}
+                        {{ institucion.get('institucion_linea1') if institucion.get else (institucion.institucion_linea1 if institucion.institucion_linea1 else 'Sistema de Gestión Escolar') }}
+                    {% else %}
+                        Sistema de Gestión Escolar
+                    {% endif %}
                 </h5>
-                {% if institucion and institucion.get('institucion_linea2') %}
+
+                {% set linea2 = institucion.get('institucion_linea2') if institucion and institucion.get else (institucion.institucion_linea2 if institucion.institucion_linea2 else '') %}
+                {% if linea2 %}
                 <div style="font-size: 11px; color: #94a3b8; line-height: 1.1;">
-                    {{ institucion['institucion_linea2'] }}
+                    {{ linea2 }}
                 </div>
                 {% endif %}
-                {% if institucion and institucion.get('institucion_linea3') %}
+
+                {% set linea3 = institucion.get('institucion_linea3') if institucion and institucion.get else (institucion.institucion_linea3 if institucion.institucion_linea3 else '') %}
+                {% if linea3 %}
                 <div style="font-size: 10px; color: #64748b; line-height: 1.1;">
-                    {{ institucion['institucion_linea3'] }}
+                    {{ linea3 }}
                 </div>
                 {% endif %}
-                <small>Avrora Soft - Vibola LLC</small>
+                <small class="d-block mt-2">Avrora Soft - Vibola LLC</small>
             </div>
 
             <!-- ⭐ MENÚ COMPACTO SIN ETIQUETAS DE GRUPO -->
@@ -581,18 +611,12 @@
                     Dashboard
                 </a>
 
+                <!-- MÓDULO UNIFICADO: ESTUDIANTES Y COBROS -->
                 <a class="nav-link" href="/estudiantes/">
                     <i class="bi bi-mortarboard-fill"></i>
-                    Estudiantes
+                    Estudiantes y Cobros
                 </a>
-                <!-- MÓDULO DE PAGOS Y DEUDORES -->
-                <a class="nav-link" href="{{ url_for('pagos.index') }}">
-                    <i class="bi bi-cash-stack"></i>
-                    <span>Gestión de Pagos</span>
-                </a>
-				<li class="nav-item">
-				<a class="nav-link" href="{{ url_for('personal.planilla_general') }}"><i class="bi bi-file-earmark-spreadsheet-fill me-1"></i> Planilla-Pagos</a>
-				</li>
+                
                 <a class="nav-link text-danger" href="{{ url_for('pagos.reporte_deudores') }}">
                     <i class="bi bi-exclamation-octagon-fill"></i>
                     <span>Deudores por Curso</span>
@@ -615,9 +639,9 @@
                     Faltas y Licencias
                 </a>
 
-                <!-- Reportes de Caja (Dropdown adaptado a la estética nav-link) -->
+                <!-- Reportes de Caja -->
                 <div class="nav-item dropdown px-3 my-1">
-                    <a class="nav-link dropdown-toggle p-0" href="#" data-bs-toggle="dropdown">
+                    <a class="nav-link dropdown-toggle p-0" href="javascript:void(0);" data-bs-toggle="dropdown">
                         <i class="bi bi-file-earmark-bar-graph"></i> Reportes de Caja
                     </a>
                     <ul class="dropdown-menu">
@@ -633,47 +657,44 @@
                 <div class="nav-link text-warning fw-bold px-3">
                     <i class="bi bi-clock-history"></i> Turno: {{ session['turno_activo'] }}
                 </div>
-                <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
-                    <i class="bi bi-stop-circle"></i> Cerrar Turno
-                </a>
+                <div class="px-3 my-1">
+                    <form action="{{ url_for('auth.logout_turno') }}" method="POST" class="m-0 p-0" onsubmit="return confirm('¿Está seguro de cerrar el turno de caja?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="nav-link text-danger btn btn-link p-0 border-0 d-flex align-items-center gap-2" style="text-decoration: none; background: none; box-shadow: none;">
+                            <i class="bi bi-stop-circle"></i>
+                            <span>Cerrar Turno</span>
+                        </button>
+                    </form>
+                </div>
                 {% else %}
                 <a class="nav-link text-primary fw-bold" href="{{ url_for('auth.login_turno') }}">
                     <i class="bi bi-play-circle"></i> Iniciar Turno
                 </a>
                 {% endif %}
 
-                {% if session.get('superadmin_boveda') or session.get('superadmin_informes') %}
-                <a class="nav-link" href="/superadmin/informes">
-                    <i class="bi bi-graph-up-arrow"></i>
-                    Informes
+                <!-- ⭐ BOTÓN UNIFICADO MAESTRO -->
+                <a class="nav-link fw-bold text-info" href="/caja/">
+                    <i class="bi bi-wallet2"></i>
+                    Caja y Pagos
                 </a>
 
-                <a class="nav-link" href="/superadmin/configuracion_institucion">
-                    <i class="bi bi-building"></i>
-                    Configuración Institucional
-                </a>
-
-                <a class="nav-link" href="/superadmin/configuracion_anio_escolar">
-                    <i class="bi bi-calendar3"></i>
-                    Configuración Año Escolar
-                </a>
-                {% endif %}
-
-                <a class="nav-link" href="/caja/">
+                <!-- ⭐ NUEVO BOTÓN: PLANILLAS DE PAGO -->
+                <a class="nav-link fw-bold text-success" href="/personal/planillas">
                     <i class="bi bi-cash-stack"></i>
-                    Control de Caja
-                </a>
-
-                <a class="nav-link" href="/gastos/">
-                    <i class="bi bi-receipt"></i>
-                    Gastos
+                    Planillas de pago
                 </a>
 
                 <div class="sidebar-separator"></div>
 
-                <a class="nav-link" href="/chat/">
+                <!-- MÓDULOS DE COMUNICACIÓN RESCATADOS -->
+                <a class="nav-link text-warning" href="{{ url_for('admin_profesores_chat.gestionar_chat_profesores') }}">
+                    <i class="bi bi-chat-heart-fill"></i>
+                    <span>Chat con Profesores</span>
+                </a>
+
+                <a class="nav-link" href="{{ url_for('chat.index') }}">
                     <i class="bi bi-chat-dots-fill"></i>
-                    Chat con Padres
+                    <span>Chat con Padres</span>
                 </a>
 
                 <a class="nav-link" href="{{ url_for('estudiantes.lista_egresados') }}">
@@ -681,17 +702,18 @@
                     Registro de Egresados
                 </a>
 
-                <a class="nav-link" href="/profesor-portal/login">
-                    <i class="bi bi-door-open-fill"></i>
-                    Portal de Profesores
-                </a>
-
                 <div class="sidebar-separator"></div>
 
-                <a class="nav-link text-danger" href="{{ url_for('auth.logout_turno') }}">
-                    <i class="bi bi-box-arrow-left"></i>
-                    Cerrar Sesión
-                </a>
+                <!-- CERRAR SESIÓN DEL SISTEMA -->
+                <div class="px-3 my-1">
+                    <form action="{{ url_for('auth.logout') }}" method="POST" class="m-0 p-0" onsubmit="return confirm('¿Cerrar sesión de todo el sistema?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="nav-link text-danger btn btn-link p-0 border-0 d-flex align-items-center gap-2" style="text-decoration: none; background: none; box-shadow: none;">
+                            <i class="bi bi-box-arrow-left"></i>
+                            <span>Cerrar Sesión</span>
+                        </button>
+                    </form>
+                </div>
             </div>
         </nav>
 
@@ -709,19 +731,16 @@
                         <i class="bi bi-list"></i>
                     </button>
 
-                    <!-- LOGO MINI EN LA TOPBAR -->
-                    {% if institucion and institucion.get('institucion_logo') %}
-                    <img src="{{ url_for('static', filename=institucion['institucion_logo']) }}" alt="Logo" class="logo-mini">
-                    {% endif %}
+                    <!-- LOGO MINI EN LA TOPBAR (Forzado a crecer) -->
+                    <img src="{{ url_for('superadmin.ver_logo_institucion') }}?v={{ nombre_logo }}" 
+                         alt="Logo" 
+                         class="bg-white rounded-circle p-1 shadow-sm" 
+                         style="width: 60px !important; height: 60px !important; min-width: 60px !important; min-height: 60px !important; max-height: none !important; object-fit: contain;">
 
                     <h5 class="mb-0">
-                        {% block page_title %}
-                        {% if institucion and institucion.get('institucion_linea1') %}
-                            {{ institucion.get('institucion_linea1') }}
-                        {% else %}
-                            Sistema de Gestión Escolar
-                        {% endif %}
-                        {% endblock %}
+                    {% block page_title %}
+                        {{ institucion.get('institucion_linea1', 'Sistema de Gestión Escolar') if institucion else 'Sistema de Gestión Escolar' }}
+                    {% endblock %}
                     </h5>
                 </div>
 
@@ -812,22 +831,37 @@
     </script>
 
     {% block extra_scripts %}{% endblock %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const precargados = new Set();
 
-    <script>
-        (function(){
-            var VERSION = 'v20260819-limpieza';
-            if (localStorage.getItem('app_version') !== VERSION) {
-                localStorage.setItem('app_version', VERSION);
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
-                }
-                if ('caches' in window) {
-                    caches.keys().then(function(ns){ ns.forEach(function(n){ caches.delete(n); }); });
-                }
-                location.reload(true);
+        function precargarPagina(url) {
+            if (!url || precargados.has(url) || url.startsWith('javascript:') || url.includes('#')) return;
+            precargados.add(url);
+            
+            // Petición silenciosa en segundo plano para almacenar en caché
+            fetch(url, { method: 'GET', mode: 'no-cors' })
+                .catch(() => {
+                    // Silenciar errores de red si la ruta es externa o no disponible temporalmente
+                });
+        }
+
+        // Detectar cuando el usuario pasa el mouse o toca un enlace para precargarlo al instante
+        document.querySelectorAll('a[href]').forEach(function(enlace) {
+            let url = enlace.getAttribute('href');
+            // Solo aplicamos a enlaces internos de la aplicación
+            if (url && (url.startsWith('/') || url.includes(window.location.hostname))) {
+                enlace.addEventListener('mouseenter', function() {
+                    precargarPagina(url);
+                }, { once: true }); // Se ejecuta una sola vez por enlace para optimizar recursos
+                
+                enlace.addEventListener('touchstart', function() {
+                    precargarPagina(url);
+                }, { once: true });
             }
-        })();
-    </script>
+        });
+    });
+</script>
 </body>
 
 </html>
